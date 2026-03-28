@@ -149,6 +149,8 @@ const state = {
   currentUser: null,
   aiConfig: { kind: "openai", baseUrl: "", model: "", hasApiKey: false, apiKeyMasked: "", apiKeyInput: "", updatedAt: null, updatedBy: null },
   versionCompare: null,
+  logicAudit: null,
+  nodeAiResult: "",
   activeGlobalTab: "setup",
   activeEditorTab: "chapter-node",
   zoom: 1,
@@ -201,6 +203,11 @@ const els = {
   exportPreview: document.getElementById("export-preview"),
   aiStatus: document.getElementById("ai-status"),
   aiAdminNote: document.getElementById("ai-admin-note"),
+  logicAuditBrief: document.getElementById("logic-audit-brief"),
+  logicAuditResult: document.getElementById("logic-audit-result"),
+  nodeGenerateBrief: document.getElementById("node-generate-brief"),
+  rewriteFollowingBrief: document.getElementById("rewrite-following-brief"),
+  nodeAiResult: document.getElementById("node-ai-result"),
   statNodeCount: document.getElementById("stat-node-count"),
   statEdgeCount: document.getElementById("stat-edge-count"),
   statEndingCount: document.getElementById("stat-ending-count"),
@@ -489,10 +496,16 @@ function bindActions() {
   });
   document.getElementById("simulate-btn").addEventListener("click", renderSimulation);
   document.getElementById("generate-graph-btn").addEventListener("click", generateWithAi);
+  document.getElementById("audit-logic-btn").addEventListener("click", auditLogicWithAi);
+  document.getElementById("generate-node-btn").addEventListener("click", generateNodeWithAi);
   document.getElementById("refine-node-btn").addEventListener("click", refineNodeWithAi);
+  document.getElementById("rewrite-following-btn").addEventListener("click", rewriteFollowingWithAi);
   document.getElementById("zoom-in-btn").addEventListener("click", () => adjustZoom(0.1));
   document.getElementById("zoom-out-btn").addEventListener("click", () => adjustZoom(-0.1));
   document.getElementById("zoom-reset-btn").addEventListener("click", () => { state.zoom = 1; renderGraph(); });
+  document.querySelectorAll(".speaker-preset-btn").forEach(button => {
+    button.addEventListener("click", () => applySpeakerPreset(button.dataset.speaker));
+  });
   bindCanvasInteractions();
 }
 
@@ -518,6 +531,7 @@ function renderAll() {
   renderStats();
   renderExportPreview();
   renderAiStatus();
+  renderAiPanels();
 }
 
 function renderTabs() {
@@ -987,6 +1001,25 @@ function renderAiStatus() {
   els.aiStatus.style.background = ready ? "rgba(88,113,100,.15)" : "rgba(31,38,36,.08)";
 }
 
+function renderAiPanels() {
+  if (state.logicAudit?.summary) {
+    const issues = (state.logicAudit.issues || []).map(issue =>
+      `<article class="ai-issue-card">
+        <strong>${escapeHtml(issue.title || issue.scope || "检查项")}</strong>
+        <p>${escapeHtml(issue.detail || "")}</p>
+        <p>建议：${escapeHtml(issue.suggestion || "无")}</p>
+      </article>`
+    ).join("");
+    els.logicAuditResult.innerHTML = `
+      <strong>${escapeHtml(state.logicAudit.summary)}</strong>
+      <div class="ai-issue-list">${issues || "<p>没有发现明显冲突。</p>"}</div>`;
+  } else {
+    els.logicAuditResult.textContent = "AI 会在这里给出全局设定、人物语言、世界规则的一致性检查结果。";
+  }
+
+  els.nodeAiResult.textContent = state.nodeAiResult || "这里会显示当前节点生成、改写和后续节点调整的摘要。";
+}
+
 function renderVersionCompare() {
   if (!state.versionCompare) {
     els.versionCompare.textContent = "选择版本后可查看不同用户修改版本的对照。";
@@ -1300,6 +1333,38 @@ async function generateWithAi() {
   }
 }
 
+async function auditLogicWithAi() {
+  setBusy("audit-logic-btn", true);
+  try {
+    state.activeGlobalTab = "prompt";
+    const result = await requestLogicAuditFromModel(els.logicAuditBrief.value.trim());
+    state.logicAudit = result;
+    renderAll();
+    flashStatus("全局逻辑检查已完成");
+  } catch (error) {
+    flashStatus(`逻辑检查失败：${error.message}`, true);
+  } finally {
+    setBusy("audit-logic-btn", false);
+  }
+}
+
+async function generateNodeWithAi() {
+  const node = currentNode();
+  if (!node) return;
+  setBusy("generate-node-btn", true);
+  try {
+    const updated = await requestNodeGenerateFromModel(node, els.nodeGenerateBrief.value.trim());
+    Object.assign(node, updated, { id: node.id, position: node.position });
+    state.nodeAiResult = `已按“${node.speaker || "未命名角色"}”口吻生成当前节点，并保留当前分支结构。`;
+    persistDraftAndRender();
+    flashStatus("当前节点台词已生成");
+  } catch (error) {
+    flashStatus(`节点生成失败：${error.message}`, true);
+  } finally {
+    setBusy("generate-node-btn", false);
+  }
+}
+
 async function refineNodeWithAi() {
   const node = currentNode();
   if (!node) return;
@@ -1307,6 +1372,7 @@ async function refineNodeWithAi() {
   try {
     const updated = await requestNodeRefineFromModel(node, els.refineInstruction.value.trim());
     Object.assign(node, updated, { id: node.id, position: node.position });
+    state.nodeAiResult = `已根据附加要求调整当前节点“${node.title}”。`;
     persistDraftAndRender();
     flashStatus("当前节点已调整");
   } catch (error) {
@@ -1316,23 +1382,118 @@ async function refineNodeWithAi() {
   }
 }
 
+async function rewriteFollowingWithAi() {
+  const node = currentNode();
+  if (!node) return;
+  setBusy("rewrite-following-btn", true);
+  try {
+    const updatedNodes = await requestRewriteFollowingFromModel(node, els.rewriteFollowingBrief.value.trim());
+    const nodeMap = new Map(currentChapter().nodes.map(item => [item.id, item]));
+    updatedNodes.forEach(updated => {
+      const target = nodeMap.get(updated.id);
+      if (!target) return;
+      Object.assign(target, updated, { id: target.id, position: target.position });
+    });
+    state.nodeAiResult = `已根据当前节点的新要求联动改写 ${updatedNodes.length} 个后续节点。`;
+    persistDraftAndRender();
+    flashStatus("后续相关节点已改写");
+  } catch (error) {
+    flashStatus(`后续改写失败：${error.message}`, true);
+  } finally {
+    setBusy("rewrite-following-btn", false);
+  }
+}
+
 async function requestGraphFromModel() {
   if (!canUseAiProxy()) return fallbackGenerateGraph();
-  const prompt =
-    `项目：${currentProject().title}\n目标：${currentProject().projectGoal}\n章节：${currentChapter()?.title ?? ""}\n世界：${currentProject().worldNotes}\n主角：${protagonistSummary()}\n` +
-    `指标：${currentProject().metrics.map(metric => `${metric.id}(${metric.initial}/${metric.min}-${metric.max})`).join(", ")}\n任务：${currentProject().generationBrief}\n` +
-    "输出 JSON：{\"nodes\":[{id,title,speaker,kind,text,tags,notes,effects,choices:[{id,label,targetId,intent,note,effects}]}]}。";
-  const data = await requestAiJson("/ai/generate-graph", currentProject().systemPrompt, prompt, 0.8);
-  return normalizeGraphPayload(extractJson(extractAiText(data)));
+  try {
+    const prompt =
+      `${buildAiContextBlock()}\n章节任务：${currentProject().generationBrief}\n` +
+      "要求：1. 所有节点的说话者必须明确区分为“旁白”“精灵”“人物名”。2. 精灵负责提示和纠偏，语气克制。3. 人物台词必须符合性格与场景。4. 旁白只做场景或动作信息，不替人物表达心理结论。\n" +
+      "输出 JSON：{\"nodes\":[{id,title,speaker,kind,text,tags,notes,effects,choices:[{id,label,targetId,intent,note,effects}]}]}。";
+    const data = await requestAiJson("/ai/generate-graph", currentProject().systemPrompt, prompt, 0.8);
+    return normalizeGraphPayload(extractJson(extractAiText(data)));
+  } catch {
+    return fallbackGenerateGraph();
+  }
 }
 
 async function requestNodeRefineFromModel(node, instruction) {
   if (!canUseAiProxy()) return fallbackRefineNode(node, instruction);
-  const prompt =
-    `项目目标：${currentProject().projectGoal}\n章节：${currentChapter()?.title ?? ""}\n主角：${protagonistSummary()}\n当前节点：${JSON.stringify(node)}\n` +
-    `调整要求：${instruction || "让节点更自然，同时保留训练目标。"}\n输出 JSON：{title,speaker,kind,text,tags,notes,effects,choices}`;
-  const data = await requestAiJson("/ai/refine-node", currentProject().systemPrompt, prompt, 0.7);
-  return normalizeNodePayload(extractJson(extractAiText(data)));
+  try {
+    const prompt =
+      `${buildAiContextBlock()}\n当前节点：${JSON.stringify(node)}\n` +
+      `调整要求：${instruction || "让节点更自然，同时保留训练目标。"}\n` +
+      "要求：保持当前节点说话者类别清晰区分为旁白、精灵或人物；如果是人物，语气必须与其性格一致。\n输出 JSON：{title,speaker,kind,text,tags,notes,effects,choices}";
+    const data = await requestAiJson("/ai/refine-node", currentProject().systemPrompt, prompt, 0.7);
+    return normalizeNodePayload(extractJson(extractAiText(data)));
+  } catch {
+    return fallbackRefineNode(node, instruction);
+  }
+}
+
+async function requestLogicAuditFromModel(instruction) {
+  if (!canUseAiProxy()) return fallbackLogicAudit(instruction);
+  try {
+    const prompt =
+      `${buildAiContextBlock()}\n章节摘要：${summarizeCurrentChapterForAi()}\n` +
+      `审查重点：${instruction || "检查人物语言是否和性格冲突，是否违背世界规则，是否偏离游戏整体设定。"}\n` +
+      "输出 JSON：{summary,issues:[{scope,severity,title,detail,suggestion}]}。";
+    const data = await requestAiJson("/ai/generate-graph", currentProject().systemPrompt, prompt, 0.4);
+    return normalizeLogicAuditPayload(extractJson(extractAiText(data)));
+  } catch {
+    return fallbackLogicAudit(instruction);
+  }
+}
+
+async function requestNodeGenerateFromModel(node, instruction) {
+  if (!canUseAiProxy()) return fallbackGenerateNode(node, instruction);
+  try {
+    const prompt =
+      `${buildAiContextBlock()}\n当前节点骨架：${JSON.stringify({
+        id: node.id,
+        title: node.title,
+        speaker: node.speaker,
+        kind: node.kind,
+        tags: node.tags,
+        notes: node.notes,
+        effects: node.effects,
+        choices: node.choices
+      })}\n` +
+      `节点要求：${instruction || "基于当前节点位置生成一段完整、自然、可落地的节点台词。"}\n` +
+      "要求：如果说话者是“旁白”，只写动作/环境/状态；如果是“精灵”，要有引导和纠偏但不过度说教；如果是“人物”或人物名，要贴合角色性格。输出 JSON：{title,speaker,kind,text,tags,notes,effects,choices}";
+    const data = await requestAiJson("/ai/refine-node", currentProject().systemPrompt, prompt, 0.75);
+    return normalizeNodePayload(extractJson(extractAiText(data)));
+  } catch {
+    return fallbackGenerateNode(node, instruction);
+  }
+}
+
+async function requestRewriteFollowingFromModel(node, instruction) {
+  const downstream = collectDownstreamNodes(node.id).map(item => ({
+    id: item.id,
+    title: item.title,
+    speaker: item.speaker,
+    kind: item.kind,
+    text: item.text,
+    tags: item.tags,
+    notes: item.notes,
+    effects: item.effects,
+    choices: item.choices
+  }));
+  if (!downstream.length) return [];
+  if (!canUseAiProxy()) return fallbackRewriteFollowing(downstream, instruction);
+  try {
+    const prompt =
+      `${buildAiContextBlock()}\n触发节点：${JSON.stringify(node)}\n待联动改写节点：${JSON.stringify(downstream)}\n` +
+      `联动改写要求：${instruction || "根据当前节点的新方向，联动收敛后续相关对话。"}\n` +
+      "要求：保持节点 id 不变；按原路径语义改写；明确区分旁白、精灵、人物；不要删除 choices。输出 JSON：{nodes:[{id,title,speaker,kind,text,tags,notes,effects,choices}]}";
+    const data = await requestAiJson("/ai/generate-graph", currentProject().systemPrompt, prompt, 0.72);
+    const payload = extractJson(extractAiText(data));
+    return (payload.nodes || []).map(item => normalizeNodePayload(item));
+  } catch {
+    return fallbackRewriteFollowing(downstream, instruction);
+  }
 }
 
 async function requestAiJson(pathname, systemPrompt, userPrompt, temperature) {
@@ -1370,6 +1531,49 @@ function fallbackGenerateGraph() {
   });
 }
 
+function fallbackLogicAudit(instruction) {
+  const issues = [];
+  currentChapter().nodes.forEach(node => {
+    if ((node.speaker || "").includes("精灵") && !/(提示|纠偏|观察|事实|想法)/.test(node.text)) {
+      issues.push({
+        scope: node.title,
+        severity: "medium",
+        title: "精灵台词训练功能不足",
+        detail: "精灵节点没有明显承担提示或纠偏职责。",
+        suggestion: "让精灵更明确地区分事实、想法、情绪或下一步行动。"
+      });
+    }
+    if ((node.speaker || "").includes("旁白") && /我觉得|她一定|他肯定/.test(node.text)) {
+      issues.push({
+        scope: node.title,
+        severity: "medium",
+        title: "旁白越界解释人物内心",
+        detail: "旁白出现了主观结论，容易和人物台词边界混淆。",
+        suggestion: "改成动作、表情、停顿或环境变化描述。"
+      });
+    }
+  });
+  return {
+    summary: instruction ? `已按“${instruction}”做快速一致性检查。` : "已做快速一致性检查。",
+    issues
+  };
+}
+
+function fallbackGenerateNode(node, instruction) {
+  const updated = structuredClone(node);
+  const speaker = normalizeSpeakerLabel(node.speaker);
+  if (speaker === "旁白") {
+    updated.text = "空气短暂地停住了，客厅里只有杯沿轻轻碰到桌面的声音。";
+  } else if (speaker === "精灵") {
+    updated.text = "先别急着替别人下结论。你能确认的，是刚刚发生的事，还是你脑子里自动冒出来的解释？";
+  } else {
+    updated.text = `${currentProject().protagonist.name || "主角"}吸了一口气，先把话压慢了一点：“我想先弄清楚刚刚具体发生了什么。”`;
+  }
+  updated.notes = `${updated.notes || ""}\nAI生成：${instruction || "按世界规则和人物设定生成当前节点。"} `.trim();
+  updated.tags = Array.from(new Set([...(updated.tags || []), "ai-generated"]));
+  return updated;
+}
+
 function fallbackRefineNode(node, instruction) {
   const refined = structuredClone(node);
   const direction = instruction || "更自然，减少判断";
@@ -1377,6 +1581,22 @@ function fallbackRefineNode(node, instruction) {
   refined.notes = `${node.notes ?? ""}\nAI调整：${direction}`.trim();
   refined.tags = Array.from(new Set([...(node.tags ?? []), "ai-refined"]));
   return refined;
+}
+
+function fallbackRewriteFollowing(nodes, instruction) {
+  return nodes.map(node => {
+    const updated = structuredClone(node);
+    const speaker = normalizeSpeakerLabel(node.speaker);
+    if (speaker === "旁白") {
+      updated.text = `${updated.text.replace(/。?$/, "")}。场面因此比之前更收一点。`;
+    } else if (speaker === "精灵") {
+      updated.text = `${updated.text.replace(/。?$/, "")}。记得只提醒，不要替玩家下结论。`;
+    } else {
+      updated.text = `${updated.text.replace(/。?$/, "")}。这次表达比之前更克制，也更贴近人物本来的性格。`;
+    }
+    updated.notes = `${updated.notes || ""}\n后续联动改写：${instruction || "顺着当前节点方向统一语气。"} `.trim();
+    return updated;
+  });
 }
 
 function addNode() {
@@ -1587,6 +1807,13 @@ function normalizeNodePayload(node) {
   return normalizeNode(node, 0, currentProject().metrics);
 }
 
+function normalizeLogicAuditPayload(payload) {
+  return {
+    summary: payload.summary || "已完成逻辑审查。",
+    issues: Array.isArray(payload.issues) ? payload.issues : []
+  };
+}
+
 function normalizeEffects(input, metrics = currentProject().metrics) {
   const aliases = buildMetricAliases(metrics);
   const out = {};
@@ -1678,6 +1905,65 @@ function extractNumericDelta(value) {
     return matched ? Number(matched[0]) : NaN;
   }
   return NaN;
+}
+
+function buildAiContextBlock() {
+  return [
+    `项目：${currentProject().title}`,
+    `项目目标：${currentProject().projectGoal}`,
+    `世界规则：${currentProject().worldNotes}`,
+    `主角：${protagonistSummary()}`,
+    `章节：${currentChapter()?.title ?? ""}`,
+    `章节备注：${currentChapter()?.notes ?? ""}`,
+    `指标：${currentProject().metrics.map(metric => `${metric.label}/${metric.id}(${metric.initial}/${metric.min}-${metric.max})`).join("，")}`,
+    "说话者规则：旁白负责环境与动作，精灵负责提示和纠偏，人物负责符合性格与场景的自然表达。"
+  ].join("\n");
+}
+
+function summarizeCurrentChapterForAi() {
+  return (currentChapter()?.nodes || []).map(node =>
+    `[${node.id}] ${node.title} | ${normalizeSpeakerLabel(node.speaker)} | ${kindLabel(node.kind)} | ${truncate(node.text, 80)}`
+  ).join("\n");
+}
+
+function collectDownstreamNodes(startId) {
+  const chapter = currentChapter();
+  if (!chapter) return [];
+  const visited = new Set([startId]);
+  const queue = [startId];
+  const collected = [];
+  while (queue.length) {
+    const nodeId = queue.shift();
+    const node = chapter.nodes.find(item => item.id === nodeId);
+    if (!node) continue;
+    node.choices.forEach(choice => {
+      const target = chapter.nodes.find(item => item.id === choice.targetId);
+      if (!target || visited.has(target.id)) return;
+      visited.add(target.id);
+      queue.push(target.id);
+      collected.push(target);
+    });
+  }
+  return collected;
+}
+
+function normalizeSpeakerLabel(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "人物";
+  if (/(旁白|narrat)/i.test(raw)) return "旁白";
+  if (/(精灵|spirit|fairy|guide)/i.test(raw)) return "精灵";
+  return raw;
+}
+
+function applySpeakerPreset(speaker) {
+  const node = currentNode();
+  if (!node) return;
+  if (speaker === "人物") {
+    node.speaker = currentProject().protagonist.name || "人物";
+  } else {
+    node.speaker = speaker;
+  }
+  persistDraftAndRender();
 }
 
 function makeDraggable(element, node) {

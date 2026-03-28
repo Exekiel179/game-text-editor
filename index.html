@@ -150,7 +150,7 @@
               <div class="section-heading">
                 <div>
                   <p class="panel-kicker">AI 工作台</p>
-                  <h3>提示词、模型与生成</h3>
+                  <h3>提示词、模型与逻辑校验</h3>
                 </div>
                 <div class="button-row compact">
                   <span class="status-pill" id="ai-status">未连接</span>
@@ -173,11 +173,27 @@
                 <label class="span-2">AI 调整说明<textarea id="refine-instruction" rows="3" placeholder="例如：把当前节点改得更克制，减少说教，保留 CBT 训练目的"></textarea></label>
               </div>
               <div id="ai-admin-note" class="tip">AI 接口配置仅管理员可修改。普通用户可直接使用已配置的模型能力。</div>
-              <div class="button-row">
-                <button id="generate-graph-btn">AI 生成分支</button>
-                <button class="ghost" id="refine-node-btn">AI 调整当前节点</button>
-              </div>
-              <p class="tip">先确定主角和提示词，再让 AI 起草，最后在右侧做人工精修。</p>
+              <section class="editor-block ai-block">
+                <div class="section-heading">
+                  <div>
+                    <p class="panel-kicker">步骤 1</p>
+                    <h3>全局逻辑矫正</h3>
+                  </div>
+                  <button id="audit-logic-btn" type="button">检查整体一致性</button>
+                </div>
+                <label>全局审查重点<textarea id="logic-audit-brief" rows="3" placeholder="例如：重点检查人物说话是否和性格冲突，精灵提示是否过度说教，是否违背家庭冲突场景设定"></textarea></label>
+                <div id="logic-audit-result" class="ai-result-panel">AI 会在这里给出全局设定、人物语言、世界规则的一致性检查结果。</div>
+              </section>
+              <section class="editor-block ai-block">
+                <div class="section-heading">
+                  <div>
+                    <p class="panel-kicker">步骤 2</p>
+                    <h3>章节起草</h3>
+                  </div>
+                  <button id="generate-graph-btn">AI 生成分支</button>
+                </div>
+                <p class="tip">先用全局逻辑矫正确认人物设定和世界规则，再生成整章分支草案。</p>
+              </section>
             </section>
 
             <section class="tab-panel metrics-panel" data-tab-group="global" data-tab-panel="metrics">
@@ -268,8 +284,16 @@
                     <div><h3>节点</h3></div>
                     <button class="text-button" id="new-choice-btn">新增选项</button>
                   </div>
+                  <div class="speaker-preset-row">
+                    <span class="panel-kicker">发言归类</span>
+                    <div class="button-row compact">
+                      <button class="ghost speaker-preset-btn" type="button" data-speaker="旁白">旁白</button>
+                      <button class="ghost speaker-preset-btn" type="button" data-speaker="精灵">精灵</button>
+                      <button class="ghost speaker-preset-btn" type="button" data-speaker="人物">人物</button>
+                    </div>
+                  </div>
                   <label>节点标题<input id="node-title" type="text" placeholder="节点标题"></label>
-                  <label>说话者<input id="node-speaker" type="text" placeholder="母亲 / 主角 / 精灵"></label>
+                  <label>说话者<input id="node-speaker" type="text" placeholder="旁白 / 精灵 / 人物名"></label>
                   <label>节点类型
                     <select id="node-kind">
                       <option value="start">开场</option>
@@ -282,6 +306,24 @@
                   <label>文本内容<textarea id="node-text" rows="7" placeholder="输入节点文案"></textarea></label>
                   <label>标签<input id="node-tags" type="text" placeholder="fact, thought, conflict, cbt"></label>
                   <label>教学意图 / 设计注释<textarea id="node-notes" rows="4" placeholder="例如：让玩家先误把推断当成事实，再由精灵进行纠偏"></textarea></label>
+                </section>
+                <section class="editor-block ai-block">
+                  <div class="section-heading">
+                    <div>
+                      <p class="panel-kicker">步骤 3</p>
+                      <h3>节点 AI 辅助</h3>
+                    </div>
+                  </div>
+                  <label>节点生成要求<textarea id="node-generate-brief" rows="3" placeholder="例如：这是精灵的提示节点，要轻一点，不要直接说教，明确指出“想法”和“事实”的差别"></textarea></label>
+                  <div class="button-row">
+                    <button id="generate-node-btn" type="button">生成当前节点台词</button>
+                    <button class="ghost" id="refine-node-btn">AI 调整当前节点</button>
+                  </div>
+                  <label>后续改写要求<textarea id="rewrite-following-brief" rows="3" placeholder="例如：如果这一句改得更克制，后面相关节点也要一起收敛情绪，并保持精灵、旁白、人物语气有区分"></textarea></label>
+                  <div class="button-row">
+                    <button class="ghost" id="rewrite-following-btn" type="button">改写后续相关节点</button>
+                  </div>
+                  <div id="node-ai-result" class="ai-result-panel">这里会显示当前节点生成、改写和后续节点调整的摘要。</div>
                 </section>
               </div>
             </section>

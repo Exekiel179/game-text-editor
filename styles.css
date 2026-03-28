@@ -373,6 +373,12 @@ textarea:focus {
   gap: 1rem;
 }
 
+.ai-block {
+  background:
+    linear-gradient(180deg, rgba(249, 244, 236, 0.92), rgba(244, 234, 220, 0.68)),
+    radial-gradient(circle at top right, rgba(88, 113, 100, 0.09), transparent 42%);
+}
+
 .editor-block {
   display: grid;
   gap: 0.8rem;
@@ -393,6 +399,43 @@ textarea:focus {
 .right-panel > .panel > textarea,
 .right-panel > .panel > .effects-grid {
   min-height: 0;
+}
+
+.speaker-preset-row {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.ai-result-panel {
+  display: grid;
+  gap: 0.7rem;
+  min-height: 112px;
+  padding: 0.95rem;
+  border-radius: var(--radius-md);
+  background: rgba(255, 252, 247, 0.78);
+  border: 1px solid rgba(49, 35, 24, 0.1);
+  color: var(--ink-soft);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.ai-issue-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.ai-issue-card {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.75rem 0.8rem;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 249, 242, 0.9);
+  border: 1px solid rgba(49, 35, 24, 0.08);
+}
+
+.ai-issue-card p,
+.ai-issue-card strong {
+  margin: 0;
 }
 
 .right-panel #export-preview {
