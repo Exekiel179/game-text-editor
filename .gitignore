@@ -1,0 +1,4 @@
+node_modules/
+data_store/
+server.out.log
+server.err.log

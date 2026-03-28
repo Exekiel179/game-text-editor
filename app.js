@@ -1,0 +1,1387 @@
+const LOCAL_KEY = "mindweaver-dialogue-studio-v2";
+const API_BASE = "/api";
+
+const PRESETS = {
+  cbt_training: {
+    label: "CBT 训练回路",
+    systemPrompt: "你是对话游戏策划与心理训练内容编辑。输出必须是结构化 JSON，对话要克制、具体、可交互，避免说教。优先生成有限状态收束结构，而不是指数级分支树。节点要服务训练目标：区分事实、想法、情绪和推断。",
+    brief: "生成一段 6 到 8 个节点的训练型对话，包含误判、精灵提示、纠偏和一个收束结尾。"
+  },
+  family_conflict: {
+    label: "家庭冲突章节",
+    systemPrompt: "你在设计家庭冲突场景的剧情对话。情绪要真实但不过度刺激。每个节点兼顾训练目的和叙事推进，优先使用观察、感受、需求表达。",
+    brief: "生成第一章家庭客厅冲突对话，主角在父母争执中学习把推断和事实分开。"
+  },
+  tutorial_branch: {
+    label: "新手教学分支",
+    systemPrompt: "你在写游戏教学分支。文案应短、清楚、可执行。每条分支反馈玩家行为，并一步一步引导上手。",
+    brief: "设计一段 2 分钟内完成的新手引导对话，包含一次错误后回正。"
+  },
+  side_quest: {
+    label: "支线角色任务",
+    systemPrompt: "你在设计可复用的支线任务对话。节点之间要有轻量分歧，但结果收束到少数结局。突出角色个性与可回放性。",
+    brief: "围绕同学误会事件设计一个带有信任值变化的支线对话。"
+  }
+};
+
+const DEFAULT_METRICS = [
+  { id: "stress", label: "压力", min: 0, max: 100, initial: 48, color: "#a33c2f" },
+  { id: "clarity", label: "清晰度", min: 0, max: 100, initial: 36, color: "#587164" },
+  { id: "trust", label: "信任", min: 0, max: 100, initial: 42, color: "#b18b54" }
+];
+
+const SAMPLE_PROJECT = {
+  id: "sample_local",
+  title: "第一章：家里的风暴",
+  projectGoal: "让玩家在家庭冲突里练习区分事实与想法",
+  worldNotes: "场景为家庭客厅。母亲和父亲刚发生争执，精灵只有主角能看见，会在关键节点提示。",
+  protagonist: {
+    name: "林澈",
+    role: "高一学生，冲突中的观察者",
+    traits: "敏感，习惯先猜别人的态度，遇压会退缩",
+    goal: "先稳住局面，再尝试表达自己的感受"
+  },
+  preset: "cbt_training",
+  systemPrompt: PRESETS.cbt_training.systemPrompt,
+  generationBrief: PRESETS.cbt_training.brief,
+  provider: { kind: "openai", baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4.1-mini" },
+  metrics: structuredClone(DEFAULT_METRICS),
+  derivedFormulas: "balance = clarity - stress\nreadiness = trust + clarity - stress / 2",
+  chapters: [
+    {
+      id: "ch01",
+      title: "第一章：家里的风暴",
+      slug: "ch01_home_storm",
+      notes: "第一章训练目标：在高压家庭冲突中拆分事实、想法和需求。",
+      nodes: [
+        {
+          id: "n1",
+          title: "晚餐前的空气",
+          speaker: "母亲",
+          kind: "start",
+          text: "你爸刚才又把答应的事忘了。你看，他根本就不在乎这个家。",
+          tags: ["conflict", "thought"],
+          notes: "用明显的推断开场。",
+          position: { x: 64, y: 90 },
+          effects: { stress: 8, clarity: -2 },
+          choices: [
+            { id: "c1", label: "先顺着母亲说：他确实不在乎", targetId: "n2", intent: "附和", note: "进入误判路线", effects: { stress: 5, trust: -2 } },
+            { id: "c2", label: "先问：具体忘了哪件事？", targetId: "n3", intent: "求证", note: "进入求证路线", effects: { clarity: 6, trust: 3 } }
+          ]
+        },
+        {
+          id: "n2",
+          title: "精灵打断",
+          speaker: "精灵",
+          kind: "training",
+          text: "等等，'他根本不在乎' 是能直接看到的事实，还是你们根据情绪做出的推断？",
+          tags: ["cbt", "correction"],
+          notes: "训练节点。",
+          position: { x: 380, y: 60 },
+          effects: { clarity: 8, stress: -3 },
+          choices: [{ id: "c3", label: "承认这是推断，再回到具体事件", targetId: "n3", intent: "纠偏", note: "", effects: { clarity: 8 } }]
+        },
+        {
+          id: "n3",
+          title: "回到可验证信息",
+          speaker: "主角",
+          kind: "dialogue",
+          text: "我先确认一下，今天具体发生了什么？是约好的买药忘了，还是别的事情？",
+          tags: ["fact", "de-escalation"],
+          notes: "把训练目标转成自然表达。",
+          position: { x: 378, y: 238 },
+          effects: { stress: -6, clarity: 7, trust: 2 },
+          choices: [{ id: "c4", label: "母亲说：是买药忘了", targetId: "n4", intent: "事实展开", note: "", effects: { clarity: 4 } }]
+        },
+        {
+          id: "n4",
+          title: "第二次分辨",
+          speaker: "精灵",
+          kind: "reflection",
+          text: "很好。'忘了买药' 是事实，'他不在乎' 是想法。下一步，你可以怎么表达自己，而不是替别人下结论？",
+          tags: ["reflection", "cbt"],
+          notes: "反思节点。",
+          position: { x: 710, y: 140 },
+          effects: { clarity: 10, stress: -4 },
+          choices: [
+            { id: "c5", label: "说出观察 + 感受 + 需求", targetId: "n5", intent: "重构表达", note: "", effects: { trust: 8, stress: -6 } },
+            { id: "c6", label: "继续评价父亲态度", targetId: "n6", intent: "回到指责", note: "保留一个低质量结局", effects: { stress: 8, trust: -4 } }
+          ]
+        },
+        {
+          id: "n5",
+          title: "关系缓和",
+          speaker: "主角",
+          kind: "ending",
+          text: "今天忘了买药这件事让我很紧张，我需要的是先把药的问题解决，而不是继续猜彼此的态度。",
+          tags: ["ending", "good"],
+          notes: "正向收束。",
+          position: { x: 1042, y: 70 },
+          effects: { stress: -12, clarity: 10, trust: 12 },
+          choices: []
+        },
+        {
+          id: "n6",
+          title: "冲突升级",
+          speaker: "母亲",
+          kind: "ending",
+          text: "你看，连你也只会替他说话。算了，没人会真的理解我。",
+          tags: ["ending", "bad"],
+          notes: "负向收束。",
+          position: { x: 1045, y: 250 },
+          effects: { stress: 10, trust: -10 },
+          choices: []
+        }
+      ]
+    }
+  ]
+};
+
+const state = {
+  backendOnline: false,
+  projects: [],
+  versions: [],
+  project: loadLocalProject(),
+  selectedChapterId: null,
+  selectedNodeId: null,
+  zoom: 1,
+  exportMode: "project"
+};
+
+const els = {
+  backendStatus: document.getElementById("backend-status"),
+  projectList: document.getElementById("project-list"),
+  chapterList: document.getElementById("chapter-list"),
+  versionList: document.getElementById("version-list"),
+  projectTitle: document.getElementById("project-title"),
+  projectGoal: document.getElementById("project-goal"),
+  worldNotes: document.getElementById("world-notes"),
+  heroName: document.getElementById("hero-name"),
+  heroRole: document.getElementById("hero-role"),
+  heroTraits: document.getElementById("hero-traits"),
+  heroGoal: document.getElementById("hero-goal"),
+  presetSelect: document.getElementById("preset-select"),
+  systemPrompt: document.getElementById("system-prompt"),
+  generationBrief: document.getElementById("generation-brief"),
+  providerKind: document.getElementById("provider-kind"),
+  apiBaseUrl: document.getElementById("api-base-url"),
+  apiKey: document.getElementById("api-key"),
+  modelName: document.getElementById("model-name"),
+  chapterTitle: document.getElementById("chapter-title"),
+  chapterNotes: document.getElementById("chapter-notes"),
+  selectedNodeTitle: document.getElementById("selected-node-title"),
+  nodeTitle: document.getElementById("node-title"),
+  nodeSpeaker: document.getElementById("node-speaker"),
+  nodeKind: document.getElementById("node-kind"),
+  nodeText: document.getElementById("node-text"),
+  nodeTags: document.getElementById("node-tags"),
+  nodeNotes: document.getElementById("node-notes"),
+  nodeEffects: document.getElementById("node-effects"),
+  choiceList: document.getElementById("choice-list"),
+  metricList: document.getElementById("metric-list"),
+  derivedFormulas: document.getElementById("derived-formulas"),
+  graphLayer: document.getElementById("graph-layer"),
+  edgeLayer: document.getElementById("edge-layer"),
+  simulationSummary: document.getElementById("simulation-summary"),
+  simulationLog: document.getElementById("simulation-log"),
+  exportPreview: document.getElementById("export-preview"),
+  aiStatus: document.getElementById("ai-status"),
+  statNodeCount: document.getElementById("stat-node-count"),
+  statEdgeCount: document.getElementById("stat-edge-count"),
+  statEndingCount: document.getElementById("stat-ending-count"),
+  refineInstruction: document.getElementById("refine-instruction"),
+  nodeTemplate: document.getElementById("graph-node-template"),
+  choiceTemplate: document.getElementById("choice-item-template")
+};
+
+bootstrap();
+
+async function bootstrap() {
+  populatePresetOptions();
+  bindProjectFields();
+  bindActions();
+  ensureSelection();
+  renderAll();
+  await syncBackendState();
+}
+
+function loadLocalProject() {
+  try {
+    const raw = localStorage.getItem(LOCAL_KEY);
+    return raw ? normalizeProject(JSON.parse(raw)) : normalizeProject(structuredClone(SAMPLE_PROJECT));
+  } catch {
+    return normalizeProject(structuredClone(SAMPLE_PROJECT));
+  }
+}
+
+function saveLocalDraft() {
+  localStorage.setItem(LOCAL_KEY, JSON.stringify(state.project));
+}
+
+function normalizeProject(project) {
+  return {
+    id: project.id || `local_${Date.now().toString(36)}`,
+    title: project.title || project.projectTitle || "未命名项目",
+    projectGoal: project.projectGoal || "",
+    worldNotes: project.worldNotes || "",
+    protagonist: project.protagonist || { name: "", role: "", traits: "", goal: "" },
+    preset: project.preset || "cbt_training",
+    systemPrompt: project.systemPrompt || PRESETS.cbt_training.systemPrompt,
+    generationBrief: project.generationBrief || PRESETS.cbt_training.brief,
+    provider: {
+      kind: project.provider?.kind || "openai",
+      baseUrl: project.provider?.baseUrl || "https://api.openai.com/v1",
+      apiKey: project.provider?.apiKey || "",
+      model: project.provider?.model || "gpt-4.1-mini"
+    },
+    metrics: Array.isArray(project.metrics) && project.metrics.length ? project.metrics : structuredClone(DEFAULT_METRICS),
+    derivedFormulas: project.derivedFormulas || "",
+    chapters: Array.isArray(project.chapters) && project.chapters.length ? project.chapters.map(normalizeChapter) : [makeChapter("第一章：新章节")],
+    createdAt: project.createdAt || new Date().toISOString(),
+    updatedAt: project.updatedAt || new Date().toISOString()
+  };
+}
+
+function normalizeChapter(chapter) {
+  return {
+    id: chapter.id || `ch_${Date.now().toString(36)}`,
+    title: chapter.title || "未命名章节",
+    slug: chapter.slug || slugify(chapter.title || "chapter"),
+    notes: chapter.notes || "",
+    nodes: Array.isArray(chapter.nodes) && chapter.nodes.length ? chapter.nodes.map(normalizeNode) : [makeNode("n1", "开场", "旁白", "start")]
+  };
+}
+
+function normalizeNode(node, index = 0) {
+  return {
+    id: node.id || `n${index + 1}`,
+    title: node.title || `节点 ${index + 1}`,
+    speaker: node.speaker || "旁白",
+    kind: ["start", "dialogue", "training", "reflection", "ending"].includes(node.kind || node.type) ? (node.kind || node.type) : "dialogue",
+    text: node.text || "",
+    tags: Array.isArray(node.tags) ? node.tags : splitTags(node.tags || ""),
+    notes: node.notes || "",
+    position: node.position || node.editor_position || { x: 64 + index * 240, y: 96 + (index % 2) * 160 },
+    effects: normalizeEffects(node.effects),
+    choices: Array.isArray(node.choices) ? node.choices.map((choice, idx) => ({
+      id: choice.id || `c_${index + 1}_${idx + 1}`,
+      label: choice.label || choice.text || `选项 ${idx + 1}`,
+      targetId: choice.targetId || choice.target || "",
+      intent: choice.intent || "",
+      note: choice.note || "",
+      effects: normalizeEffects(choice.effects)
+    })) : []
+  };
+}
+
+function makeChapter(title) {
+  return normalizeChapter({ title, nodes: [makeNode("n1", "开场", "旁白", "start")] });
+}
+
+function makeNode(id, title, speaker, kind) {
+  return {
+    id,
+    title,
+    speaker,
+    kind,
+    text: "输入新节点文案",
+    tags: ["draft"],
+    notes: "",
+    position: { x: 72, y: 96 },
+    effects: {},
+    choices: []
+  };
+}
+
+function ensureSelection() {
+  state.selectedChapterId = state.selectedChapterId && currentProject().chapters.some(ch => ch.id === state.selectedChapterId)
+    ? state.selectedChapterId
+    : currentProject().chapters[0]?.id ?? null;
+  state.selectedNodeId = state.selectedNodeId && currentChapter()?.nodes.some(node => node.id === state.selectedNodeId)
+    ? state.selectedNodeId
+    : currentChapter()?.nodes[0]?.id ?? null;
+}
+
+function currentProject() {
+  return state.project;
+}
+
+function currentChapter() {
+  return currentProject().chapters.find(chapter => chapter.id === state.selectedChapterId) ?? null;
+}
+
+function currentNode() {
+  return currentChapter()?.nodes.find(node => node.id === state.selectedNodeId) ?? null;
+}
+
+function populatePresetOptions() {
+  els.presetSelect.innerHTML = "";
+  Object.entries(PRESETS).forEach(([value, preset]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = preset.label;
+    els.presetSelect.append(option);
+  });
+}
+
+function bindProjectFields() {
+  const bindings = [
+    [els.projectTitle, value => currentProject().title = value],
+    [els.projectGoal, value => currentProject().projectGoal = value],
+    [els.worldNotes, value => currentProject().worldNotes = value],
+    [els.heroName, value => currentProject().protagonist.name = value],
+    [els.heroRole, value => currentProject().protagonist.role = value],
+    [els.heroTraits, value => currentProject().protagonist.traits = value],
+    [els.heroGoal, value => currentProject().protagonist.goal = value],
+    [els.systemPrompt, value => currentProject().systemPrompt = value],
+    [els.generationBrief, value => currentProject().generationBrief = value],
+    [els.providerKind, value => currentProject().provider.kind = value],
+    [els.apiBaseUrl, value => currentProject().provider.baseUrl = value],
+    [els.apiKey, value => currentProject().provider.apiKey = value],
+    [els.modelName, value => currentProject().provider.model = value],
+    [els.derivedFormulas, value => currentProject().derivedFormulas = value],
+    [els.chapterTitle, value => { const chapter = currentChapter(); if (chapter) { chapter.title = value; chapter.slug = slugify(value); } }],
+    [els.chapterNotes, value => { const chapter = currentChapter(); if (chapter) chapter.notes = value; }]
+  ];
+
+  bindings.forEach(([element, setter]) => {
+    element.addEventListener("input", event => {
+      setter(event.target.value);
+      persistDraftAndRender();
+    });
+  });
+
+  els.presetSelect.addEventListener("change", event => {
+    currentProject().preset = event.target.value;
+    currentProject().systemPrompt = PRESETS[event.target.value]?.systemPrompt ?? PRESETS.cbt_training.systemPrompt;
+    currentProject().generationBrief = PRESETS[event.target.value]?.brief ?? PRESETS.cbt_training.brief;
+    persistDraftAndRender();
+  });
+}
+
+function bindActions() {
+  document.getElementById("load-sample-btn").addEventListener("click", () => {
+    state.project = normalizeProject(structuredClone(SAMPLE_PROJECT));
+    state.selectedChapterId = state.project.chapters[0].id;
+    state.selectedNodeId = state.project.chapters[0].nodes[0].id;
+    persistDraftAndRender();
+  });
+  document.getElementById("save-local-btn").addEventListener("click", () => {
+    saveLocalDraft();
+    flashStatus("草稿已保存");
+  });
+  document.getElementById("refresh-projects-btn").addEventListener("click", syncBackendState);
+  document.getElementById("refresh-versions-btn").addEventListener("click", loadVersions);
+  document.getElementById("new-project-btn").addEventListener("click", createProjectOnServer);
+  document.getElementById("save-server-btn").addEventListener("click", saveProjectToServer);
+  document.getElementById("create-version-btn").addEventListener("click", createVersionOnServer);
+  document.getElementById("new-chapter-btn").addEventListener("click", () => {
+    const title = `第${currentProject().chapters.length + 1}章：新章节`;
+    const chapter = makeChapter(title);
+    currentProject().chapters.push(chapter);
+    state.selectedChapterId = chapter.id;
+    state.selectedNodeId = chapter.nodes[0].id;
+    persistDraftAndRender();
+  });
+  document.getElementById("apply-protagonist-btn").addEventListener("click", () => {
+    currentProject().systemPrompt = `${PRESETS[currentProject().preset]?.systemPrompt ?? ""}\n主角设定：${protagonistSummary()}`;
+    persistDraftAndRender();
+  });
+  document.getElementById("reset-system-prompt-btn").addEventListener("click", () => {
+    currentProject().systemPrompt = PRESETS[currentProject().preset]?.systemPrompt ?? PRESETS.cbt_training.systemPrompt;
+    persistDraftAndRender();
+  });
+  document.getElementById("auto-layout-btn").addEventListener("click", () => {
+    autoLayoutChapter(currentChapter());
+    persistDraftAndRender();
+  });
+  document.getElementById("export-json-btn").addEventListener("click", () => {
+    downloadFile(`${slugify(currentProject().title)}.json`, JSON.stringify(exportProjectData(), null, 2), "application/json");
+  });
+  document.getElementById("export-markdown-btn").addEventListener("click", () => {
+    downloadFile(`${slugify(currentProject().title)}.md`, exportMarkdown(), "text/markdown");
+  });
+  document.getElementById("export-godot-btn").addEventListener("click", exportGodotPack);
+  document.getElementById("copy-export-btn").addEventListener("click", async () => {
+    await navigator.clipboard.writeText(els.exportPreview.value);
+    flashStatus("导出内容已复制");
+  });
+  document.getElementById("import-json-input").addEventListener("change", async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      state.project = normalizeProject(JSON.parse(await file.text()));
+      ensureSelection();
+      persistDraftAndRender();
+    } catch {
+      flashStatus("导入失败：JSON 无法解析", true);
+    }
+    event.target.value = "";
+  });
+  document.getElementById("add-node-btn").addEventListener("click", addNode);
+  document.getElementById("duplicate-node-btn").addEventListener("click", duplicateNode);
+  document.getElementById("delete-node-btn").addEventListener("click", deleteNode);
+  document.getElementById("new-choice-btn").addEventListener("click", addChoice);
+  document.getElementById("smart-links-btn").addEventListener("click", smartLinkChoices);
+  document.getElementById("reset-node-effects-btn").addEventListener("click", () => {
+    const node = currentNode();
+    if (!node) return;
+    node.effects = {};
+    persistDraftAndRender();
+  });
+  document.getElementById("add-metric-btn").addEventListener("click", () => {
+    currentProject().metrics.push({ id: `metric_${currentProject().metrics.length + 1}`, label: `指标 ${currentProject().metrics.length + 1}`, min: 0, max: 100, initial: 0, color: "#6f7d8c" });
+    persistDraftAndRender();
+  });
+  document.getElementById("simulate-btn").addEventListener("click", renderSimulation);
+  document.getElementById("generate-graph-btn").addEventListener("click", generateWithAi);
+  document.getElementById("refine-node-btn").addEventListener("click", refineNodeWithAi);
+  document.getElementById("zoom-in-btn").addEventListener("click", () => adjustZoom(0.1));
+  document.getElementById("zoom-out-btn").addEventListener("click", () => adjustZoom(-0.1));
+  document.getElementById("zoom-reset-btn").addEventListener("click", () => { state.zoom = 1; renderGraph(); });
+}
+
+function persistDraftAndRender() {
+  currentProject().updatedAt = new Date().toISOString();
+  ensureSelection();
+  saveLocalDraft();
+  renderAll();
+}
+
+function renderAll() {
+  renderBackendStatus();
+  renderProjectFields();
+  renderProjectList();
+  renderChapterList();
+  renderVersionList();
+  renderMetrics();
+  renderGraph();
+  renderNodeEditor();
+  renderSimulation();
+  renderStats();
+  renderExportPreview();
+  renderAiStatus();
+}
+
+function renderBackendStatus() {
+  els.backendStatus.textContent = state.backendOnline ? "在线" : "离线";
+  els.backendStatus.style.background = state.backendOnline ? "rgba(88,113,100,.15)" : "rgba(143,45,34,.12)";
+  els.backendStatus.style.color = state.backendOnline ? "#587164" : "#8f2d22";
+}
+
+function renderProjectFields() {
+  els.projectTitle.value = currentProject().title;
+  els.projectGoal.value = currentProject().projectGoal;
+  els.worldNotes.value = currentProject().worldNotes;
+  els.heroName.value = currentProject().protagonist.name;
+  els.heroRole.value = currentProject().protagonist.role;
+  els.heroTraits.value = currentProject().protagonist.traits;
+  els.heroGoal.value = currentProject().protagonist.goal;
+  els.presetSelect.value = currentProject().preset;
+  els.systemPrompt.value = currentProject().systemPrompt;
+  els.generationBrief.value = currentProject().generationBrief;
+  els.providerKind.value = currentProject().provider.kind;
+  els.apiBaseUrl.value = currentProject().provider.baseUrl;
+  els.apiKey.value = currentProject().provider.apiKey;
+  els.modelName.value = currentProject().provider.model;
+  els.derivedFormulas.value = currentProject().derivedFormulas;
+  els.chapterTitle.value = currentChapter()?.title ?? "";
+  els.chapterNotes.value = currentChapter()?.notes ?? "";
+}
+
+function renderProjectList() {
+  els.projectList.innerHTML = "";
+  state.projects.forEach(project => {
+    const article = document.createElement("article");
+    article.className = "choice-item";
+    article.innerHTML = `<strong>${escapeHtml(project.title)}</strong><p>${project.chapters} 章节 · ${formatDate(project.updatedAt)}</p>`;
+    article.addEventListener("click", async () => {
+      try {
+        const result = await apiFetch(`/projects/${project.id}`);
+        state.project = normalizeProject(result.project);
+        ensureSelection();
+        await loadVersions();
+        persistDraftAndRender();
+      } catch (error) {
+        flashStatus(`加载项目失败：${error.message}`, true);
+      }
+    });
+    els.projectList.append(article);
+  });
+}
+
+function renderChapterList() {
+  els.chapterList.innerHTML = "";
+  currentProject().chapters.forEach(chapter => {
+    const article = document.createElement("article");
+    article.className = "choice-item";
+    article.style.cursor = "pointer";
+    article.innerHTML = `<strong>${escapeHtml(chapter.title)}</strong><p>${chapter.nodes.length} 节点 · ${chapter.slug}</p>`;
+    if (chapter.id === state.selectedChapterId) article.style.outline = "2px solid rgba(143,45,34,.22)";
+    article.addEventListener("click", () => {
+      state.selectedChapterId = chapter.id;
+      state.selectedNodeId = chapter.nodes[0]?.id ?? null;
+      renderAll();
+    });
+    els.chapterList.append(article);
+  });
+}
+
+function renderVersionList() {
+  els.versionList.innerHTML = "";
+  state.versions.slice(0, 8).forEach(version => {
+    const article = document.createElement("article");
+    article.className = "choice-item";
+    article.innerHTML = `<strong>${escapeHtml(version.label)}</strong><p>${formatDate(version.createdAt)}</p>`;
+    const button = document.createElement("button");
+    button.className = "ghost";
+    button.textContent = "恢复";
+    button.addEventListener("click", async event => {
+      event.stopPropagation();
+      try {
+        const result = await apiFetch(`/projects/${currentProject().id}/restore`, {
+          method: "POST",
+          body: JSON.stringify({ versionId: version.id })
+        });
+        state.project = normalizeProject(result.project);
+        ensureSelection();
+        await loadVersions();
+        persistDraftAndRender();
+        flashStatus("已恢复到选中版本");
+      } catch (error) {
+        flashStatus(`恢复失败：${error.message}`, true);
+      }
+    });
+    article.append(button);
+    els.versionList.append(article);
+  });
+}
+
+function renderMetrics() {
+  els.metricList.innerHTML = "";
+  currentProject().metrics.forEach(metric => {
+    const article = document.createElement("article");
+    article.className = "metric-item";
+    article.innerHTML = `
+      <div class="section-heading">
+        <div style="display:flex;align-items:center;gap:.55rem;">
+          <span class="swatch" style="background:${metric.color}"></span>
+          <strong>${metric.label}</strong>
+        </div>
+        <button class="text-button">删除</button>
+      </div>
+      <div class="metric-grid">
+        <label>键名<input data-field="id" value="${escapeHtml(metric.id)}"></label>
+        <label>显示名<input data-field="label" value="${escapeHtml(metric.label)}"></label>
+        <label>最小值<input data-field="min" type="number" value="${metric.min}"></label>
+        <label>最大值<input data-field="max" type="number" value="${metric.max}"></label>
+        <label>初始值<input data-field="initial" type="number" value="${metric.initial}"></label>
+        <label>颜色<input data-field="color" type="color" value="${metric.color}"></label>
+      </div>`;
+    article.querySelector(".text-button").addEventListener("click", () => {
+      currentProject().metrics = currentProject().metrics.filter(item => item.id !== metric.id);
+      persistDraftAndRender();
+    });
+    article.querySelectorAll("input").forEach(input => {
+      input.addEventListener("input", event => {
+        const field = event.target.dataset.field;
+        metric[field] = ["min", "max", "initial"].includes(field) ? Number(event.target.value) : event.target.value;
+        persistDraftAndRender();
+      });
+    });
+    els.metricList.append(article);
+  });
+}
+
+function renderGraph() {
+  const chapter = currentChapter();
+  const nodes = chapter?.nodes ?? [];
+  const width = Math.max(...nodes.map(node => node.position?.x ?? 0), 900) + 420;
+  const height = Math.max(...nodes.map(node => node.position?.y ?? 0), 500) + 260;
+  els.graphLayer.innerHTML = "";
+  els.edgeLayer.innerHTML = "";
+  els.graphLayer.style.width = `${width}px`;
+  els.graphLayer.style.height = `${height}px`;
+  els.graphLayer.style.transform = `scale(${state.zoom})`;
+  els.edgeLayer.setAttribute("width", width * state.zoom);
+  els.edgeLayer.setAttribute("height", height * state.zoom);
+  els.edgeLayer.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+  nodes.forEach(node => {
+    const fragment = els.nodeTemplate.content.cloneNode(true);
+    const button = fragment.querySelector(".graph-node");
+    button.classList.add(kindClass(node.kind));
+    if (node.id === state.selectedNodeId) button.classList.add("active");
+    button.style.left = `${node.position?.x ?? 0}px`;
+    button.style.top = `${node.position?.y ?? 0}px`;
+    button.querySelector(".node-kind-badge").textContent = kindLabel(node.kind);
+    button.querySelector(".node-name").textContent = node.title;
+    button.querySelector(".node-speaker").textContent = node.speaker || "未命名说话者";
+    button.querySelector(".node-excerpt").textContent = truncate(node.text, 84);
+    button.querySelector(".node-choice-count").textContent = `${node.choices.length} 条选项`;
+    button.querySelector(".node-tags").textContent = (node.tags ?? []).slice(0, 3).join(" · ");
+    button.addEventListener("click", () => {
+      state.selectedNodeId = node.id;
+      renderAll();
+    });
+    makeDraggable(button, node);
+    els.graphLayer.append(button);
+  });
+
+  nodes.forEach(node => {
+    node.choices.forEach(choice => {
+      const target = nodes.find(item => item.id === choice.targetId);
+      if (!target) return;
+      const startX = (node.position?.x ?? 0) + 240;
+      const startY = (node.position?.y ?? 0) + 92;
+      const endX = target.position?.x ?? 0;
+      const endY = (target.position?.y ?? 0) + 92;
+      const midX = (startX + endX) / 2;
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("class", "edge-path");
+      path.setAttribute("d", `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`);
+      els.edgeLayer.append(path);
+      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      label.setAttribute("class", "edge-label");
+      label.setAttribute("x", String(midX));
+      label.setAttribute("y", String((startY + endY) / 2 - 8));
+      label.textContent = truncate(choice.label, 14);
+      els.edgeLayer.append(label);
+    });
+  });
+}
+
+function renderNodeEditor() {
+  const node = currentNode();
+  els.selectedNodeTitle.textContent = node ? `${currentChapter()?.title ?? ""} / ${node.title}` : "未选择节点";
+  if (!node) {
+    [els.nodeTitle, els.nodeSpeaker, els.nodeText, els.nodeTags, els.nodeNotes].forEach(input => input.value = "");
+    els.choiceList.innerHTML = "";
+    els.nodeEffects.innerHTML = "";
+    return;
+  }
+
+  els.nodeTitle.value = node.title;
+  els.nodeSpeaker.value = node.speaker;
+  els.nodeKind.value = node.kind;
+  els.nodeText.value = node.text;
+  els.nodeTags.value = node.tags.join(", ");
+  els.nodeNotes.value = node.notes;
+  bindNodeField(els.nodeTitle, value => node.title = value);
+  bindNodeField(els.nodeSpeaker, value => node.speaker = value);
+  bindNodeField(els.nodeKind, value => node.kind = value);
+  bindNodeField(els.nodeText, value => node.text = value);
+  bindNodeField(els.nodeTags, value => node.tags = splitTags(value));
+  bindNodeField(els.nodeNotes, value => node.notes = value);
+
+  els.nodeEffects.innerHTML = "";
+  currentProject().metrics.forEach(metric => {
+    const row = document.createElement("label");
+    row.className = "effects-row";
+    row.innerHTML = `<span>${metric.label}</span><input type="number" value="${node.effects?.[metric.id] ?? 0}">`;
+    row.querySelector("input").addEventListener("input", event => {
+      node.effects[metric.id] = Number(event.target.value);
+      if (node.effects[metric.id] === 0) delete node.effects[metric.id];
+      persistDraftAndRender();
+    });
+    els.nodeEffects.append(row);
+  });
+  renderChoiceEditor(node);
+}
+
+function bindNodeField(element, setter) {
+  element.oninput = event => {
+    if (!currentNode()) return;
+    setter(event.target.value);
+    persistDraftAndRender();
+  };
+}
+
+function renderChoiceEditor(node) {
+  els.choiceList.innerHTML = "";
+  node.choices.forEach(choice => {
+    const fragment = els.choiceTemplate.content.cloneNode(true);
+    const labelInput = fragment.querySelector(".choice-label");
+    const targetSelect = fragment.querySelector(".choice-target");
+    const intentInput = fragment.querySelector(".choice-intent");
+    const noteInput = fragment.querySelector(".choice-note");
+    const effectsRoot = fragment.querySelector(".choice-effects");
+    labelInput.value = choice.label;
+    intentInput.value = choice.intent ?? "";
+    noteInput.value = choice.note ?? "";
+    currentChapter().nodes.forEach(candidate => {
+      const option = document.createElement("option");
+      option.value = candidate.id;
+      option.textContent = candidate.title;
+      if (candidate.id === choice.targetId) option.selected = true;
+      targetSelect.append(option);
+    });
+    labelInput.addEventListener("input", event => { choice.label = event.target.value; persistDraftAndRender(); });
+    targetSelect.addEventListener("change", event => { choice.targetId = event.target.value; persistDraftAndRender(); });
+    intentInput.addEventListener("input", event => { choice.intent = event.target.value; persistDraftAndRender(); });
+    noteInput.addEventListener("input", event => { choice.note = event.target.value; persistDraftAndRender(); });
+    currentProject().metrics.forEach(metric => {
+      const row = document.createElement("label");
+      row.className = "effects-row";
+      row.innerHTML = `<span>${metric.label}</span><input type="number" value="${choice.effects?.[metric.id] ?? 0}">`;
+      row.querySelector("input").addEventListener("input", event => {
+        choice.effects[metric.id] = Number(event.target.value);
+        if (choice.effects[metric.id] === 0) delete choice.effects[metric.id];
+        persistDraftAndRender();
+      });
+      effectsRoot.append(row);
+    });
+    fragment.querySelector(".choice-delete").addEventListener("click", () => {
+      node.choices = node.choices.filter(item => item.id !== choice.id);
+      persistDraftAndRender();
+    });
+    els.choiceList.append(fragment);
+  });
+}
+
+function renderSimulation() {
+  const summary = simulateCurrentChapter();
+  els.simulationSummary.innerHTML = "";
+  Object.entries(summary.metrics).forEach(([key, value]) => {
+    const metric = currentProject().metrics.find(item => item.id === key);
+    const chip = document.createElement("span");
+    chip.className = "metric-chip";
+    chip.innerHTML = `<span class="swatch" style="background:${metric?.color ?? "#777"}"></span>${metric?.label ?? key}: <strong>${round(value)}</strong>`;
+    els.simulationSummary.append(chip);
+  });
+  Object.entries(summary.derived).forEach(([key, value]) => {
+    const chip = document.createElement("span");
+    chip.className = "metric-chip";
+    chip.textContent = `${key}: ${round(value)}`;
+    els.simulationSummary.append(chip);
+  });
+  els.simulationLog.innerHTML = "";
+  summary.steps.forEach(step => {
+    const article = document.createElement("article");
+    article.className = "simulation-step";
+    article.innerHTML = `<strong>${step.title}</strong><p>${escapeHtml(step.summary)}</p>`;
+    els.simulationLog.append(article);
+  });
+}
+
+function simulateCurrentChapter() {
+  const metrics = Object.fromEntries(currentProject().metrics.map(metric => [metric.id, Number(metric.initial) || 0]));
+  const steps = [];
+  const nodes = currentChapter()?.nodes ?? [];
+  const visited = new Set();
+  let current = nodes.find(node => node.kind === "start") ?? nodes[0];
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id);
+    applyDelta(metrics, current.effects);
+    const chosen = chooseBestChoice(current);
+    steps.push({ title: current.title, summary: `${current.speaker}: ${truncate(current.text, 100)}${chosen ? ` → 选择「${chosen.label}」` : ""}` });
+    if (!chosen) break;
+    applyDelta(metrics, chosen.effects);
+    current = nodes.find(node => node.id === chosen.targetId);
+  }
+  return { metrics, derived: evaluateDerived(metrics), steps };
+}
+
+function chooseBestChoice(node) {
+  if (!node.choices.length) return null;
+  return [...node.choices].sort((a, b) => scoreChoice(b) - scoreChoice(a))[0];
+}
+
+function scoreChoice(choice) {
+  return Object.values(choice.effects ?? {}).reduce((sum, value) => sum + Number(value), 0) + (String(choice.intent).includes("纠偏") ? 3 : 0);
+}
+
+function renderStats() {
+  const nodes = currentChapter()?.nodes ?? [];
+  els.statNodeCount.textContent = String(nodes.length);
+  els.statEdgeCount.textContent = String(nodes.reduce((sum, node) => sum + node.choices.length, 0));
+  els.statEndingCount.textContent = String(nodes.filter(node => node.kind === "ending" || node.choices.length === 0).length);
+}
+
+function renderExportPreview() {
+  els.exportPreview.value = JSON.stringify(buildCurrentGodotPreview(), null, 2);
+}
+
+function renderAiStatus() {
+  const ready = currentProject().provider.apiKey && currentProject().provider.baseUrl && currentProject().provider.model;
+  els.aiStatus.textContent = ready ? "可调用 API" : "未连接";
+  els.aiStatus.style.color = ready ? "#587164" : "#4b5754";
+  els.aiStatus.style.background = ready ? "rgba(88,113,100,.15)" : "rgba(31,38,36,.08)";
+}
+
+async function syncBackendState() {
+  try {
+    const result = await apiFetch("/health");
+    state.backendOnline = Boolean(result.ok);
+    const projects = await apiFetch("/projects");
+    state.projects = projects.projects;
+    await loadVersions();
+  } catch {
+    state.backendOnline = false;
+    state.projects = [];
+    state.versions = [];
+  }
+  renderAll();
+}
+
+async function loadVersions() {
+  if (!state.backendOnline || !currentProject().id || currentProject().id === "sample_local") {
+    state.versions = [];
+    return;
+  }
+  try {
+    const result = await apiFetch(`/projects/${currentProject().id}/versions`);
+    state.versions = result.versions;
+  } catch {
+    state.versions = [];
+  }
+}
+
+async function createProjectOnServer() {
+  try {
+    const title = `项目 ${new Date().toLocaleDateString("zh-CN")}`;
+    const result = await apiFetch("/projects", { method: "POST", body: JSON.stringify({ title }) });
+    state.project = normalizeProject(result.project);
+    ensureSelection();
+    await syncBackendState();
+    flashStatus("已创建新项目");
+  } catch (error) {
+    flashStatus(`新建失败：${error.message}`, true);
+  }
+}
+
+async function saveProjectToServer() {
+  try {
+    if (!state.backendOnline) {
+      flashStatus("后端未启动，请先运行 npm start", true);
+      return;
+    }
+    const endpoint = state.projects.some(item => item.id === currentProject().id)
+      ? `/projects/${currentProject().id}`
+      : "/projects";
+    const method = endpoint === "/projects" ? "POST" : "PUT";
+    const body = endpoint === "/projects"
+      ? JSON.stringify({ title: currentProject().title })
+      : JSON.stringify(exportProjectData());
+    const result = await apiFetch(endpoint, { method, body });
+    if (endpoint === "/projects") {
+      currentProject().id = result.project.id;
+      await apiFetch(`/projects/${currentProject().id}`, { method: "PUT", body: JSON.stringify(exportProjectData()) });
+    } else {
+      state.project = normalizeProject(result.project);
+    }
+    await syncBackendState();
+    flashStatus("项目已保存到后端");
+  } catch (error) {
+    flashStatus(`保存失败：${error.message}`, true);
+  }
+}
+
+async function createVersionOnServer() {
+  try {
+    if (!state.backendOnline || !state.projects.some(item => item.id === currentProject().id)) {
+      flashStatus("请先把项目保存到后端", true);
+      return;
+    }
+    await apiFetch(`/projects/${currentProject().id}/versions`, {
+      method: "POST",
+      body: JSON.stringify({ label: `manual-${formatDate(new Date().toISOString(), true)}` })
+    });
+    await loadVersions();
+    renderVersionList();
+    flashStatus("版本已创建");
+  } catch (error) {
+    flashStatus(`创建版本失败：${error.message}`, true);
+  }
+}
+
+async function exportGodotPack() {
+  try {
+    let exportPack;
+    if (state.backendOnline && state.projects.some(item => item.id === currentProject().id)) {
+      const result = await apiFetch(`/projects/${currentProject().id}/export/godot`);
+      exportPack = result.export;
+    } else {
+      exportPack = buildGodotExportLocal();
+    }
+    downloadFile(`${slugify(currentProject().title)}_godot_manifest.json`, JSON.stringify(exportPack, null, 2), "application/json");
+    exportPack.files.forEach(file => {
+      downloadFile(file.path.split("/").pop(), JSON.stringify(file.content, null, 2), "application/json");
+    });
+    flashStatus("Godot 导出已生成");
+  } catch (error) {
+    flashStatus(`导出失败：${error.message}`, true);
+  }
+}
+
+async function generateWithAi() {
+  setBusy("generate-graph-btn", true);
+  try {
+    const graph = await requestGraphFromModel();
+    const chapter = currentChapter();
+    chapter.nodes = graph.nodes;
+    autoLayoutChapter(chapter);
+    state.selectedNodeId = chapter.nodes[0]?.id ?? null;
+    persistDraftAndRender();
+    flashStatus("已生成章节分支草案");
+  } catch (error) {
+    flashStatus(`生成失败：${error.message}`, true);
+  } finally {
+    setBusy("generate-graph-btn", false);
+  }
+}
+
+async function refineNodeWithAi() {
+  const node = currentNode();
+  if (!node) return;
+  setBusy("refine-node-btn", true);
+  try {
+    const updated = await requestNodeRefineFromModel(node, els.refineInstruction.value.trim());
+    Object.assign(node, updated, { id: node.id, position: node.position });
+    persistDraftAndRender();
+    flashStatus("当前节点已调整");
+  } catch (error) {
+    flashStatus(`调整失败：${error.message}`, true);
+  } finally {
+    setBusy("refine-node-btn", false);
+  }
+}
+
+async function requestGraphFromModel() {
+  if (!currentProject().provider.apiKey) return fallbackGenerateGraph();
+  const prompt =
+    `项目：${currentProject().title}\n目标：${currentProject().projectGoal}\n章节：${currentChapter()?.title ?? ""}\n世界：${currentProject().worldNotes}\n主角：${protagonistSummary()}\n` +
+    `指标：${currentProject().metrics.map(metric => `${metric.id}(${metric.initial}/${metric.min}-${metric.max})`).join(", ")}\n任务：${currentProject().generationBrief}\n` +
+    "输出 JSON：{\"nodes\":[{id,title,speaker,kind,text,tags,notes,effects,choices:[{id,label,targetId,intent,note,effects}]}]}。";
+  const data = await requestAiJson(currentProject().systemPrompt, prompt, 0.8);
+  return normalizeGraphPayload(extractJson(extractAiText(data)));
+}
+
+async function requestNodeRefineFromModel(node, instruction) {
+  if (!currentProject().provider.apiKey) return fallbackRefineNode(node, instruction);
+  const prompt =
+    `项目目标：${currentProject().projectGoal}\n章节：${currentChapter()?.title ?? ""}\n主角：${protagonistSummary()}\n当前节点：${JSON.stringify(node)}\n` +
+    `调整要求：${instruction || "让节点更自然，同时保留训练目标。"}\n输出 JSON：{title,speaker,kind,text,tags,notes,effects,choices}`;
+  const data = await requestAiJson(currentProject().systemPrompt, prompt, 0.7);
+  return normalizeNodePayload(extractJson(extractAiText(data)));
+}
+
+async function requestAiJson(systemPrompt, userPrompt, temperature) {
+  const provider = currentProject().provider;
+  const url = provider.kind === "anthropic" ? normalizeAnthropicUrl(provider.baseUrl) : normalizeUrl(provider.baseUrl, "/chat/completions");
+  const payload = provider.kind === "anthropic"
+    ? {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": provider.apiKey, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({
+          model: provider.model,
+          max_tokens: 2400,
+          temperature,
+          system: `${systemPrompt}\n仅输出 JSON，不要加解释文本。`,
+          messages: [{ role: "user", content: [{ type: "text", text: userPrompt }] }]
+        })
+      }
+    : {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${provider.apiKey}` },
+        body: JSON.stringify({
+          model: provider.model,
+          temperature,
+          response_format: { type: "json_object" },
+          messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }]
+        })
+      };
+  const response = await fetch(url, payload);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error?.message ?? data.error?.type ?? "AI 请求失败");
+  return data;
+}
+
+function extractAiText(data) {
+  if (currentProject().provider.kind === "anthropic") {
+    return (data.content ?? []).filter(item => item.type === "text").map(item => item.text).join("\n");
+  }
+  return data.choices?.[0]?.message?.content ?? "";
+}
+
+function fallbackGenerateGraph() {
+  const hero = currentProject().protagonist.name || "主角";
+  return normalizeGraphPayload({
+    nodes: [
+      { id: "n1", title: "触发场景", speaker: "NPC", kind: "start", text: `${hero}刚进入冲突现场，空气明显紧绷，第一句话带着判断和情绪。`, tags: ["draft", "conflict"], notes: "开场抛出问题。", effects: { stress: 6 }, choices: [
+        { id: "c1", label: "先求证具体发生了什么", targetId: "n2", intent: "求证", note: "", effects: { clarity: 5 } },
+        { id: "c2", label: "直接评价对方态度", targetId: "n3", intent: "指责", note: "", effects: { stress: 6 } }
+      ] },
+      { id: "n2", title: "事实浮现", speaker: hero, kind: "dialogue", text: "我先不下结论，你能告诉我今天具体发生了什么吗？", tags: ["fact"], notes: "", effects: { clarity: 6, stress: -3 }, choices: [
+        { id: "c3", label: "让精灵帮助拆分事实与想法", targetId: "n4", intent: "训练", note: "", effects: { clarity: 6 } }
+      ] },
+      { id: "n3", title: "误判升级", speaker: "精灵", kind: "training", text: "你刚才补上的是态度推断，不是你亲眼确认过的事实。", tags: ["correction"], notes: "", effects: { clarity: 8, stress: -2 }, choices: [
+        { id: "c4", label: "回到具体事件", targetId: "n2", intent: "纠偏", note: "", effects: { clarity: 5 } }
+      ] },
+      { id: "n4", title: "重构表达", speaker: "精灵", kind: "reflection", text: "如果你只说观察、感受和需求，你会怎么讲？", tags: ["reflection"], notes: "", effects: { clarity: 7, trust: 3 }, choices: [
+        { id: "c5", label: "说出观察与需求", targetId: "n5", intent: "重构表达", note: "", effects: { trust: 8, stress: -5 } },
+        { id: "c6", label: "继续控诉对方", targetId: "n6", intent: "指责", note: "", effects: { stress: 7, trust: -6 } }
+      ] },
+      { id: "n5", title: "温和收束", speaker: hero, kind: "ending", text: "我现在更想先解决眼前这件事，然后再谈彼此为什么会这么生气。", tags: ["ending", "good"], notes: "", effects: { clarity: 10, stress: -8, trust: 10 }, choices: [] },
+      { id: "n6", title: "关系冻结", speaker: "NPC", kind: "ending", text: "如果现在只剩下指责，这段对话就没法继续了。", tags: ["ending", "bad"], notes: "", effects: { stress: 10, trust: -8 }, choices: [] }
+    ]
+  });
+}
+
+function fallbackRefineNode(node, instruction) {
+  const refined = structuredClone(node);
+  const direction = instruction || "更自然，减少判断";
+  refined.text = `${node.text.replace(/。?$/, "")}。${direction.includes("精灵") ? "精灵的提示更轻一些，但仍明确指出训练重点。" : "这句表达更具体，少一点下定义，多一点观察。"}`;
+  refined.notes = `${node.notes ?? ""}\nAI调整：${direction}`.trim();
+  refined.tags = Array.from(new Set([...(node.tags ?? []), "ai-refined"]));
+  return refined;
+}
+
+function addNode() {
+  const chapter = currentChapter();
+  const id = createNodeId();
+  chapter.nodes.push({
+    id,
+    title: `新节点 ${chapter.nodes.length + 1}`,
+    speaker: currentProject().protagonist.name || "主角",
+    kind: "dialogue",
+    text: "输入新节点文案",
+    tags: ["draft"],
+    notes: "",
+    position: { x: 100 + chapter.nodes.length * 36, y: 120 + chapter.nodes.length * 28 },
+    effects: {},
+    choices: []
+  });
+  state.selectedNodeId = id;
+  persistDraftAndRender();
+}
+
+function duplicateNode() {
+  const node = currentNode();
+  if (!node) return;
+  const clone = structuredClone(node);
+  clone.id = createNodeId();
+  clone.title = `${node.title} 副本`;
+  clone.position = { x: node.position.x + 28, y: node.position.y + 28 };
+  clone.choices = clone.choices.map((choice, index) => ({ ...choice, id: `c_${clone.id}_${index + 1}` }));
+  currentChapter().nodes.push(clone);
+  state.selectedNodeId = clone.id;
+  persistDraftAndRender();
+}
+
+function deleteNode() {
+  const chapter = currentChapter();
+  if (!chapter || chapter.nodes.length <= 1) return;
+  chapter.nodes = chapter.nodes.filter(node => node.id !== state.selectedNodeId);
+  chapter.nodes.forEach(node => { node.choices = node.choices.filter(choice => choice.targetId !== state.selectedNodeId); });
+  state.selectedNodeId = chapter.nodes[0]?.id ?? null;
+  persistDraftAndRender();
+}
+
+function addChoice() {
+  const node = currentNode();
+  const target = currentChapter()?.nodes.find(candidate => candidate.id !== node?.id);
+  if (!node || !target) return;
+  node.choices.push({ id: `c_${node.id}_${node.choices.length + 1}`, label: `新选项 ${node.choices.length + 1}`, targetId: target.id, intent: "", note: "", effects: {} });
+  persistDraftAndRender();
+}
+
+function smartLinkChoices() {
+  const node = currentNode();
+  if (!node) return;
+  const candidates = currentChapter().nodes.filter(candidate => candidate.id !== node.id);
+  node.choices.forEach((choice, index) => {
+    if (!choice.targetId || !currentChapter().nodes.some(item => item.id === choice.targetId)) {
+      choice.targetId = candidates[index % Math.max(candidates.length, 1)]?.id ?? "";
+    }
+  });
+  persistDraftAndRender();
+}
+
+function autoLayoutChapter(chapter) {
+  if (!chapter?.nodes.length) return;
+  const start = chapter.nodes.find(node => node.kind === "start") ?? chapter.nodes[0];
+  const levels = new Map([[start.id, 0]]);
+  const queue = [start];
+  while (queue.length) {
+    const current = queue.shift();
+    const level = levels.get(current.id) ?? 0;
+    current.choices.forEach(choice => {
+      const target = chapter.nodes.find(node => node.id === choice.targetId);
+      if (target && !levels.has(target.id)) {
+        levels.set(target.id, level + 1);
+        queue.push(target);
+      }
+    });
+  }
+  chapter.nodes.forEach(node => { if (!levels.has(node.id)) levels.set(node.id, levels.size); });
+  const grouped = new Map();
+  chapter.nodes.forEach(node => {
+    const level = levels.get(node.id) ?? 0;
+    if (!grouped.has(level)) grouped.set(level, []);
+    grouped.get(level).push(node);
+  });
+  [...grouped.entries()].forEach(([level, nodes]) => {
+    nodes.forEach((node, index) => {
+      node.position = { x: 56 + level * 320, y: 72 + index * 180 };
+    });
+  });
+}
+
+function buildCurrentGodotPreview() {
+  const chapter = currentChapter();
+  return {
+    path: `dlg_${slugify(currentProject().id)}_${slugify(chapter?.slug || "chapter")}_v1.json`,
+    content: buildGodotExportLocal().files.find(file => file.content.chapter_id === chapter?.id)?.content ?? {}
+  };
+}
+
+function buildGodotExportLocal() {
+  return {
+    generatedAt: new Date().toISOString(),
+    projectId: currentProject().id,
+    projectTitle: currentProject().title,
+    files: currentProject().chapters.map(chapter => ({
+      path: `data/dialogue/${slugify(currentProject().id)}/dlg_${slugify(currentProject().id)}_${slugify(chapter.slug)}_v1.json`,
+      content: {
+        project_id: currentProject().id,
+        project_title: currentProject().title,
+        chapter_id: chapter.id,
+        chapter_title: chapter.title,
+        chapter_slug: chapter.slug,
+        metrics: currentProject().metrics,
+        derived_formulas: currentProject().derivedFormulas,
+        nodes: chapter.nodes.map(node => ({
+          id: node.id,
+          speaker: node.speaker,
+          title: node.title,
+          type: node.kind,
+          text: node.text,
+          tags: node.tags,
+          notes: node.notes,
+          effects: node.effects,
+          choices: node.choices.map(choice => ({ id: choice.id, text: choice.label, intent: choice.intent, note: choice.note, target: choice.targetId, effects: choice.effects })),
+          editor_position: node.position
+        }))
+      }
+    }))
+  };
+}
+
+function exportMarkdown() {
+  const lines = [
+    `# ${currentProject().title}`,
+    "",
+    "## 训练目标",
+    currentProject().projectGoal,
+    "",
+    "## 主角",
+    `- 姓名：${currentProject().protagonist.name}`,
+    `- 定位：${currentProject().protagonist.role}`,
+    `- 特质：${currentProject().protagonist.traits}`,
+    `- 目标：${currentProject().protagonist.goal}`,
+    ""
+  ];
+  currentProject().chapters.forEach(chapter => {
+    lines.push(`## ${chapter.title}`);
+    lines.push(chapter.notes || "");
+    lines.push("");
+    chapter.nodes.forEach(node => {
+      lines.push(`### ${node.title} (${kindLabel(node.kind)})`);
+      lines.push(`- 说话者：${node.speaker}`);
+      lines.push(`- 标签：${node.tags.join(", ") || "无"}`);
+      lines.push(`- 效果：${JSON.stringify(node.effects || {})}`);
+      lines.push(node.text);
+      if (node.choices.length) {
+        lines.push("选项：");
+        node.choices.forEach(choice => {
+          const target = chapter.nodes.find(item => item.id === choice.targetId);
+          lines.push(`- ${choice.label} -> ${target?.title || choice.targetId}`);
+        });
+      }
+      lines.push("");
+    });
+  });
+  return lines.join("\n");
+}
+
+function exportProjectData() {
+  return normalizeProject(currentProject());
+}
+
+function evaluateDerived(metrics) {
+  const derived = {};
+  currentProject().derivedFormulas.split("\n").map(line => line.trim()).filter(Boolean).forEach(line => {
+    const [name, expr] = line.split("=");
+    if (!name || !expr) return;
+    try {
+      const fn = new Function(...Object.keys(metrics), `return ${expr.trim()};`);
+      derived[name.trim()] = Number(fn(...Object.values(metrics)));
+    } catch {
+      derived[name.trim()] = NaN;
+    }
+  });
+  return derived;
+}
+
+function applyDelta(metrics, delta = {}) {
+  currentProject().metrics.forEach(metric => {
+    const next = (metrics[metric.id] ?? 0) + Number(delta[metric.id] ?? 0);
+    metrics[metric.id] = clamp(next, metric.min, metric.max);
+  });
+}
+
+function createNodeId() {
+  let index = currentChapter().nodes.length + 1;
+  while (currentChapter().nodes.some(node => node.id === `n${index}`)) index += 1;
+  return `n${index}`;
+}
+
+function normalizeGraphPayload(payload) {
+  return { nodes: (payload.nodes || []).map(normalizeNode) };
+}
+
+function normalizeNodePayload(node) {
+  return normalizeNode(node);
+}
+
+function normalizeEffects(input) {
+  const out = {};
+  Object.entries(input || {}).forEach(([key, value]) => {
+    const number = Number(value);
+    if (!Number.isNaN(number) && number !== 0) out[key] = number;
+  });
+  return out;
+}
+
+function makeDraggable(element, node) {
+  let dragging = false;
+  let originX = 0;
+  let originY = 0;
+  let startX = 0;
+  let startY = 0;
+  element.addEventListener("pointerdown", event => {
+    if (event.button !== 0) return;
+    dragging = true;
+    originX = event.clientX;
+    originY = event.clientY;
+    startX = node.position.x;
+    startY = node.position.y;
+    element.setPointerCapture(event.pointerId);
+  });
+  element.addEventListener("pointermove", event => {
+    if (!dragging) return;
+    node.position = { x: Math.max(0, startX + (event.clientX - originX) / state.zoom), y: Math.max(0, startY + (event.clientY - originY) / state.zoom) };
+    renderGraph();
+    renderExportPreview();
+  });
+  const stop = event => {
+    if (!dragging) return;
+    dragging = false;
+    if (event.pointerId !== undefined) element.releasePointerCapture(event.pointerId);
+    saveLocalDraft();
+  };
+  element.addEventListener("pointerup", stop);
+  element.addEventListener("pointercancel", stop);
+}
+
+async function apiFetch(pathname, options = {}) {
+  const response = await fetch(`${API_BASE}${pathname}`, {
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    ...options
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error?.message ?? "请求失败");
+  return data;
+}
+
+function adjustZoom(delta) {
+  state.zoom = clamp(round(state.zoom + delta, 2), 0.6, 1.7);
+  renderGraph();
+}
+
+function kindLabel(kind) {
+  return { start: "开场", dialogue: "对话", training: "训练", reflection: "反思", ending: "结局" }[kind] ?? "对话";
+}
+
+function kindClass(kind) {
+  return { start: "start", dialogue: "dialogue", training: "training", reflection: "reflection", ending: "ending" }[kind] ?? "dialogue";
+}
+
+function protagonistSummary() {
+  return `${currentProject().protagonist.name}，${currentProject().protagonist.role}。特质：${currentProject().protagonist.traits}。目标：${currentProject().protagonist.goal}。`;
+}
+
+function splitTags(value) {
+  return String(value).split(/[，,]/).map(tag => tag.trim()).filter(Boolean);
+}
+
+function extractJson(content) {
+  try {
+    return JSON.parse(content);
+  } catch {
+    const matched = String(content).match(/\{[\s\S]*\}/);
+    if (!matched) throw new Error("模型返回中没有可解析 JSON");
+    return JSON.parse(matched[0]);
+  }
+}
+
+function normalizeUrl(baseUrl, suffix) {
+  return `${String(baseUrl).replace(/\/+$/, "")}${suffix}`;
+}
+
+function normalizeAnthropicUrl(baseUrl) {
+  const cleaned = String(baseUrl).replace(/\/+$/, "");
+  if (cleaned.endsWith("/messages")) return cleaned;
+  if (cleaned.endsWith("/v1")) return `${cleaned}/messages`;
+  return `${cleaned}/v1/messages`;
+}
+
+function flashStatus(message, isError = false) {
+  els.aiStatus.textContent = message;
+  els.aiStatus.style.color = isError ? "#8f2d22" : "#587164";
+  els.aiStatus.style.background = isError ? "rgba(143,45,34,.12)" : "rgba(88,113,100,.15)";
+  clearTimeout(flashStatus.timer);
+  flashStatus.timer = setTimeout(renderAiStatus, 2600);
+}
+
+function setBusy(id, busy) {
+  document.getElementById(id).disabled = busy;
+}
+
+function downloadFile(filename, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function slugify(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^\w\u4e00-\u9fa5-]+/g, "_").replace(/^_+|_+$/g, "") || "item";
+}
+
+function truncate(value, length = 70) {
+  return String(value || "").length > length ? `${String(value).slice(0, length)}…` : String(value || "");
+}
+
+function escapeHtml(value) {
+  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+}
+
+function formatDate(value, compact = false) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return compact ? date.toLocaleString("zh-CN", { hour12: false }).replace(/\//g, "-").replace(", ", "_") : date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function round(value, digits = 1) {
+  const factor = 10 ** digits;
+  return Math.round(Number(value) * factor) / factor;
+}
