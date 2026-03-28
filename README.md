@@ -1,47 +1,68 @@
 # Game Text Editor
 
-`Game Text Editor` is a local-first branching dialogue editor for narrative games, training dialogue systems, and node-based interactive scripts.
+`Game Text Editor` is a branching dialogue editor for narrative games and training dialogue systems. It combines a visual node canvas, chapter-based content editing, AI-assisted drafting, multi-user collaboration, version attribution, and local filesystem persistence.
 
-It now covers the full `1 / 2 / 3` feature set:
+Version: `v0.2`
 
-1. Local backend persistence and version history
-2. Project library and multi-chapter management
-3. Godot-friendly `dlg_*.json` export
+## Core Capabilities
 
-## Version
+- Visual dialogue graph editing with node drag, edge retarget, zoom, and path simulation
+- Project -> chapter -> node -> choice workflow
+- AI graph generation and AI node refinement through a server-side AI proxy
+- Admin-only AI provider configuration
+- User registration, login, and multi-user collaborative editing
+- Version snapshots with actor attribution and version comparison summary
+- Export to JSON, Markdown, and Godot-style `dlg_*.json`
+- Single-container deployment with a persistent storage directory
 
-- Current release: `v0.1`
-- Package version: `0.1.0`
+## Roles
 
-## Features
+### Admin
 
-- Project library with local backend API
-- Multi-chapter dialogue organization
-- Visual node graph editor
-- Branch and choice editing
-- AI branch generation
-- AI node refinement
-- OpenAI-compatible API format
-- Anthropic Messages API format
-- System prompt presets
-- Protagonist setup and world notes
-- Gameplay metric effects and derived formulas
-- Version snapshot creation and restore
-- Export to JSON, Markdown, and Godot dialogue files
+- Can modify:
+  - AI provider format
+  - Base URL
+  - Model name
+  - API key
+- Can use all normal collaboration features
 
-## Tech Stack
+### Normal User
 
-- Frontend: plain HTML, CSS, JavaScript
-- Backend: local Node.js HTTP server
-- Storage: filesystem JSON under `data_store/projects`
+- Can register and log in
+- Can load, edit, save, version, restore, and export projects
+- Cannot change global AI access configuration
 
-## Run Locally
+## Storage Layout
+
+Runtime data is stored under the directory configured by `STORAGE_DIR`.
+
+Default local path:
+
+```text
+data_store/
+```
+
+Main files:
+
+```text
+data_store/
+  ai_config.json
+  users.json
+  sessions.json
+  projects/
+    <project-id>/
+      project.json
+      versions/
+        <timestamp>_<label>.json
+```
+
+## Local Run
 
 Requirements:
 
-- Node.js 18+ recommended
+- Node.js 18+
 
-Install and start:
+Start:
 
 ```bash
 npm start
@@ -53,113 +74,172 @@ Open:
 http://localhost:3030
 ```
 
-If you open `index.html` directly, the editor UI still works, but backend-backed project library, version history, and Godot export API flow are disabled.
+## Default Admin Account
 
-## Implemented 1 / 2 / 3
+If no admin exists yet, the server bootstraps one automatically.
 
-### 1. Backend persistence and versioning
-
-- `server.js` exposes local APIs for health check, project listing, project save/load, version listing, version creation, version restore, and Godot export.
-- Every server save writes project JSON plus a version snapshot.
-- Version data is stored under:
+Username and display name still default to:
 
 ```text
-data_store/projects/<project-id>/
+username: admin
+display name: Administrator
 ```
 
-### 2. Project library and multi-chapter management
+Password behavior:
 
-- The editor state is now structured as:
+- If `ADMIN_PASSWORD` is provided, that value is used
+- If `ADMIN_PASSWORD` is not provided, the server generates a one-time random password and writes it only to:
 
 ```text
-Project -> Chapters -> Nodes -> Choices
+<STORAGE_DIR>/admin_bootstrap.json
 ```
 
-- Left panel includes:
-  - project list
-  - chapter list
-  - version list
-- You can:
-  - create a new project
-  - switch between stored projects
-  - add chapters
-  - edit chapter title and notes
-  - edit nodes inside the selected chapter
+- Secure or delete that file after the first successful admin login
 
-### 3. Godot export
+Override them with environment variables:
 
-- The editor exports chapter files in a Godot-oriented format:
-
-```text
-data/dialogue/<project>/dlg_<project>_<chapter>_v1.json
+```bash
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=strong-password
+ADMIN_DISPLAY_NAME=Administrator
 ```
 
-- Exported data includes:
-  - project metadata
-  - chapter metadata
-  - metrics
-  - derived formulas
-  - nodes
-  - choices
-  - editor positions
+## Environment Variables
 
-## AI Provider Support
+- `PORT`
+  - default: `3030`
+- `STORAGE_DIR`
+  - default: `<project-root>/data_store`
+- `ADMIN_USERNAME`
+  - default: `admin`
+- `ADMIN_PASSWORD`
+  - default: no fixed default; random bootstrap password is generated if omitted
+- `ADMIN_DISPLAY_NAME`
+  - default: `Administrator`
 
-The editor supports two API request formats.
+## AI Provider Management
 
-### OpenAI Compatible
+AI credentials are now managed on the server and are shared by all collaborators.
 
-- Typical base URL:
+Supported provider formats:
 
-```text
-https://api.openai.com/v1
-```
+- `openai`
+  - normalized to `POST /chat/completions`
+- `anthropic`
+  - normalized to `POST /v1/messages`
 
-- Request endpoint:
+Frontend users no longer store shared provider credentials inside project data. The admin updates the provider once, and all authenticated users can use the configured AI generation tools.
 
-```text
-/chat/completions
-```
+## Collaboration and Versioning
 
-### Anthropic Messages
+Each project save records:
 
-- Typical base URL:
+- `lastEditedBy`
+- `updatedAt`
 
-```text
-https://api.anthropic.com
-```
+Each version snapshot records:
 
-- The app normalizes it to:
+- `actor`
+- `createdAt`
+- `label`
 
-```text
-/v1/messages
-```
+The UI can compare adjacent versions and summarize:
 
-## Project Files
-
-- `index.html`: main UI layout
-- `styles.css`: visual design and responsive styling
-- `app.js`: frontend state, graph editing, backend integration, AI calls, export logic
-- `server.js`: local backend API and filesystem persistence
-- `package.json`: package metadata and start script
-- `.gitignore`: ignored runtime files
+- chapter delta
+- node delta
+- added nodes
+- removed nodes
+- text changes
+- choice changes
+- metric/effect changes
 
 ## API Overview
 
-Local API routes:
+### Auth
 
-- `GET /api/health`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+
+### Admin AI Config
+
+- `GET /api/admin/ai-config`
+- `PUT /api/admin/ai-config`
+
+### Authenticated AI Access
+
+- `GET /api/ai/config`
+- `POST /api/ai/generate-graph`
+- `POST /api/ai/refine-node`
+
+### Projects
+
 - `GET /api/projects`
 - `POST /api/projects`
 - `GET /api/projects/:id`
 - `PUT /api/projects/:id`
 - `GET /api/projects/:id/versions`
 - `POST /api/projects/:id/versions`
+- `GET /api/projects/:id/versions/compare?from=<id>&to=<id>`
 - `POST /api/projects/:id/restore`
 - `GET /api/projects/:id/export/godot`
 
-## Notes
+## Container Deployment
 
-- Runtime data in `data_store/` is ignored from git.
-- API keys are stored in browser state for local usage and are not written into repository files by default.
-- The current release is intended as an MVP editor baseline for narrative tooling and Godot pipeline integration.
+Build:
+
+```bash
+docker build -t game-text-editor:v0.2 .
+```
+
+Run with persistent storage:
+
+```bash
+docker run -d ^
+  --name game-text-editor ^
+  -p 3030:3030 ^
+  -e STORAGE_DIR=/app/data ^
+  -e ADMIN_USERNAME=admin ^
+  -e ADMIN_PASSWORD=change-me ^
+  -e ADMIN_DISPLAY_NAME=Administrator ^
+  -v %cd%\\game-text-editor-data:/app/data ^
+  game-text-editor:v0.2
+```
+
+Linux/macOS equivalent:
+
+```bash
+docker run -d \
+  --name game-text-editor \
+  -p 3030:3030 \
+  -e STORAGE_DIR=/app/data \
+  -e ADMIN_USERNAME=admin \
+  -e ADMIN_PASSWORD=change-me \
+  -e ADMIN_DISPLAY_NAME=Administrator \
+  -v "$(pwd)/game-text-editor-data:/app/data" \
+  game-text-editor:v0.2
+```
+
+The container writes all persistent runtime state into `/app/data`.
+
+## Main Files
+
+- `index.html`
+- `styles.css`
+- `app.js`
+- `server.js`
+- `Dockerfile`
+- `.dockerignore`
+
+## Validation
+
+Validated locally with:
+
+- `node --check app.js`
+- `node --check server.js`
+- live API checks for:
+  - admin AI config update
+  - user registration/login
+  - collaborative project save
+  - version comparison

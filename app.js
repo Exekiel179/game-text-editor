@@ -1,4 +1,5 @@
 const LOCAL_KEY = "mindweaver-dialogue-studio-v2";
+const AUTH_TOKEN_KEY = "mindweaver-auth-token";
 const API_BASE = "/api";
 
 const PRESETS = {
@@ -144,15 +145,27 @@ const state = {
   project: loadLocalProject(),
   selectedChapterId: null,
   selectedNodeId: null,
+  authToken: localStorage.getItem(AUTH_TOKEN_KEY) || "",
+  currentUser: null,
+  aiConfig: { kind: "openai", baseUrl: "", model: "", hasApiKey: false, apiKeyMasked: "", apiKeyInput: "", updatedAt: null, updatedBy: null },
+  versionCompare: null,
+  activeGlobalTab: "setup",
+  activeEditorTab: "chapter-node",
   zoom: 1,
   exportMode: "project"
 };
 
 const els = {
   backendStatus: document.getElementById("backend-status"),
+  authStatus: document.getElementById("auth-status"),
+  authUserSummary: document.getElementById("auth-user-summary"),
+  authDisplayName: document.getElementById("auth-display-name"),
+  authUsername: document.getElementById("auth-username"),
+  authPassword: document.getElementById("auth-password"),
   projectList: document.getElementById("project-list"),
   chapterList: document.getElementById("chapter-list"),
   versionList: document.getElementById("version-list"),
+  versionCompare: document.getElementById("version-compare"),
   projectTitle: document.getElementById("project-title"),
   projectGoal: document.getElementById("project-goal"),
   worldNotes: document.getElementById("world-notes"),
@@ -180,12 +193,14 @@ const els = {
   choiceList: document.getElementById("choice-list"),
   metricList: document.getElementById("metric-list"),
   derivedFormulas: document.getElementById("derived-formulas"),
+  graphViewport: document.getElementById("graph-viewport"),
   graphLayer: document.getElementById("graph-layer"),
   edgeLayer: document.getElementById("edge-layer"),
   simulationSummary: document.getElementById("simulation-summary"),
   simulationLog: document.getElementById("simulation-log"),
   exportPreview: document.getElementById("export-preview"),
   aiStatus: document.getElementById("ai-status"),
+  aiAdminNote: document.getElementById("ai-admin-note"),
   statNodeCount: document.getElementById("stat-node-count"),
   statEdgeCount: document.getElementById("stat-edge-count"),
   statEndingCount: document.getElementById("stat-ending-count"),
@@ -194,15 +209,33 @@ const els = {
   choiceTemplate: document.getElementById("choice-item-template")
 };
 
+const interaction = {
+  panning: null,
+  edgeDrag: null
+};
+
 bootstrap();
 
 async function bootstrap() {
   populatePresetOptions();
   bindProjectFields();
   bindActions();
+  bindTabs();
   ensureSelection();
   renderAll();
   await syncBackendState();
+}
+
+function bindTabs() {
+  document.querySelectorAll("[data-tab-group][data-tab-target]").forEach(button => {
+    button.addEventListener("click", () => {
+      const group = button.dataset.tabGroup;
+      const target = button.dataset.tabTarget;
+      if (group === "global") state.activeGlobalTab = target;
+      if (group === "editor") state.activeEditorTab = target;
+      renderTabs();
+    });
+  });
 }
 
 function loadLocalProject() {
@@ -219,6 +252,7 @@ function saveLocalDraft() {
 }
 
 function normalizeProject(project) {
+  const metrics = Array.isArray(project.metrics) && project.metrics.length ? project.metrics : structuredClone(DEFAULT_METRICS);
   return {
     id: project.id || `local_${Date.now().toString(36)}`,
     title: project.title || project.projectTitle || "未命名项目",
@@ -234,25 +268,34 @@ function normalizeProject(project) {
       apiKey: project.provider?.apiKey || "",
       model: project.provider?.model || "gpt-4.1-mini"
     },
-    metrics: Array.isArray(project.metrics) && project.metrics.length ? project.metrics : structuredClone(DEFAULT_METRICS),
+    metrics,
     derivedFormulas: project.derivedFormulas || "",
-    chapters: Array.isArray(project.chapters) && project.chapters.length ? project.chapters.map(normalizeChapter) : [makeChapter("第一章：新章节")],
+    chapters: Array.isArray(project.chapters) && project.chapters.length ? project.chapters.map(chapter => normalizeChapter(chapter, metrics)) : [makeChapter("第一章：新章节")],
     createdAt: project.createdAt || new Date().toISOString(),
     updatedAt: project.updatedAt || new Date().toISOString()
   };
 }
 
-function normalizeChapter(chapter) {
+function normalizeChapter(chapter, metrics = DEFAULT_METRICS) {
   return {
     id: chapter.id || `ch_${Date.now().toString(36)}`,
     title: chapter.title || "未命名章节",
     slug: chapter.slug || slugify(chapter.title || "chapter"),
     notes: chapter.notes || "",
-    nodes: Array.isArray(chapter.nodes) && chapter.nodes.length ? chapter.nodes.map(normalizeNode) : [makeNode("n1", "开场", "旁白", "start")]
+    nodes: Array.isArray(chapter.nodes) && chapter.nodes.length ? chapter.nodes.map(node => normalizeNode(node, 0, metrics)) : [makeNode("n1", "开场", "旁白", "start")]
   };
 }
 
-function normalizeNode(node, index = 0) {
+function normalizeNode(node, index = 0, metrics = currentProject?.()?.metrics || DEFAULT_METRICS) {
+  const nodeEffects = normalizeEffects(
+    node.effects ??
+    node.metric_effects ??
+    node.metrics ??
+    node.deltas ??
+    node.effect_text ??
+    node.notes,
+    metrics
+  );
   return {
     id: node.id || `n${index + 1}`,
     title: node.title || `节点 ${index + 1}`,
@@ -262,14 +305,22 @@ function normalizeNode(node, index = 0) {
     tags: Array.isArray(node.tags) ? node.tags : splitTags(node.tags || ""),
     notes: node.notes || "",
     position: node.position || node.editor_position || { x: 64 + index * 240, y: 96 + (index % 2) * 160 },
-    effects: normalizeEffects(node.effects),
+    effects: nodeEffects,
     choices: Array.isArray(node.choices) ? node.choices.map((choice, idx) => ({
       id: choice.id || `c_${index + 1}_${idx + 1}`,
       label: choice.label || choice.text || `选项 ${idx + 1}`,
       targetId: choice.targetId || choice.target || "",
       intent: choice.intent || "",
       note: choice.note || "",
-      effects: normalizeEffects(choice.effects)
+      effects: normalizeEffects(
+        choice.effects ??
+        choice.metric_effects ??
+        choice.metrics ??
+        choice.deltas ??
+        choice.note ??
+        choice.text,
+        metrics
+      )
     })) : []
   };
 }
@@ -335,10 +386,10 @@ function bindProjectFields() {
     [els.heroGoal, value => currentProject().protagonist.goal = value],
     [els.systemPrompt, value => currentProject().systemPrompt = value],
     [els.generationBrief, value => currentProject().generationBrief = value],
-    [els.providerKind, value => currentProject().provider.kind = value],
-    [els.apiBaseUrl, value => currentProject().provider.baseUrl = value],
-    [els.apiKey, value => currentProject().provider.apiKey = value],
-    [els.modelName, value => currentProject().provider.model = value],
+    [els.providerKind, value => state.aiConfig.kind = value],
+    [els.apiBaseUrl, value => state.aiConfig.baseUrl = value],
+    [els.apiKey, value => state.aiConfig.apiKeyInput = value],
+    [els.modelName, value => state.aiConfig.model = value],
     [els.derivedFormulas, value => currentProject().derivedFormulas = value],
     [els.chapterTitle, value => { const chapter = currentChapter(); if (chapter) { chapter.title = value; chapter.slug = slugify(value); } }],
     [els.chapterNotes, value => { const chapter = currentChapter(); if (chapter) chapter.notes = value; }]
@@ -360,6 +411,9 @@ function bindProjectFields() {
 }
 
 function bindActions() {
+  document.getElementById("login-btn").addEventListener("click", loginUser);
+  document.getElementById("register-btn").addEventListener("click", registerUser);
+  document.getElementById("logout-btn").addEventListener("click", logoutUser);
   document.getElementById("load-sample-btn").addEventListener("click", () => {
     state.project = normalizeProject(structuredClone(SAMPLE_PROJECT));
     state.selectedChapterId = state.project.chapters[0].id;
@@ -439,6 +493,7 @@ function bindActions() {
   document.getElementById("zoom-in-btn").addEventListener("click", () => adjustZoom(0.1));
   document.getElementById("zoom-out-btn").addEventListener("click", () => adjustZoom(-0.1));
   document.getElementById("zoom-reset-btn").addEventListener("click", () => { state.zoom = 1; renderGraph(); });
+  bindCanvasInteractions();
 }
 
 function persistDraftAndRender() {
@@ -450,7 +505,9 @@ function persistDraftAndRender() {
 
 function renderAll() {
   renderBackendStatus();
+  renderAuthState();
   renderProjectFields();
+  renderTabs();
   renderProjectList();
   renderChapterList();
   renderVersionList();
@@ -463,10 +520,44 @@ function renderAll() {
   renderAiStatus();
 }
 
+function renderTabs() {
+  const activeMap = {
+    global: state.activeGlobalTab,
+    editor: state.activeEditorTab
+  };
+
+  document.querySelectorAll("[data-tab-group][data-tab-target]").forEach(button => {
+    const active = activeMap[button.dataset.tabGroup] === button.dataset.tabTarget;
+    button.classList.toggle("is-active", active);
+  });
+
+  document.querySelectorAll("[data-tab-group][data-tab-panel]").forEach(panel => {
+    const active = activeMap[panel.dataset.tabGroup] === panel.dataset.tabPanel;
+    panel.classList.toggle("is-active", active);
+    panel.hidden = !active;
+  });
+}
+
 function renderBackendStatus() {
   els.backendStatus.textContent = state.backendOnline ? "在线" : "离线";
   els.backendStatus.style.background = state.backendOnline ? "rgba(88,113,100,.15)" : "rgba(143,45,34,.12)";
   els.backendStatus.style.color = state.backendOnline ? "#587164" : "#8f2d22";
+}
+
+function renderAuthState() {
+  const user = state.currentUser;
+  els.authStatus.textContent = user ? `${user.role === "admin" ? "管理员" : "已登录"}` : "未登录";
+  els.authStatus.style.background = user ? "rgba(88,113,100,.15)" : "rgba(143,45,34,.12)";
+  els.authStatus.style.color = user ? "#587164" : "#8f2d22";
+  els.authUserSummary.textContent = user
+    ? `${user.displayName} (@${user.username}) 正在协作。${user.role === "admin" ? "你可以维护全局 AI 接口配置。" : "你可以编辑项目并参与版本协作。"}`
+    : "游客模式。登录后可读取项目库并参与协作。";
+  els.authDisplayName.disabled = Boolean(user);
+  els.authUsername.disabled = Boolean(user);
+  els.authPassword.disabled = Boolean(user);
+  document.getElementById("login-btn").disabled = Boolean(user);
+  document.getElementById("register-btn").disabled = Boolean(user);
+  document.getElementById("logout-btn").disabled = !user;
 }
 
 function renderProjectFields() {
@@ -480,21 +571,37 @@ function renderProjectFields() {
   els.presetSelect.value = currentProject().preset;
   els.systemPrompt.value = currentProject().systemPrompt;
   els.generationBrief.value = currentProject().generationBrief;
-  els.providerKind.value = currentProject().provider.kind;
-  els.apiBaseUrl.value = currentProject().provider.baseUrl;
-  els.apiKey.value = currentProject().provider.apiKey;
-  els.modelName.value = currentProject().provider.model;
+  els.providerKind.value = state.aiConfig.kind || "openai";
+  els.apiBaseUrl.value = state.aiConfig.baseUrl || "";
+  els.apiKey.value = state.currentUser?.role === "admin" ? state.aiConfig.apiKeyInput || "" : "";
+  els.apiKey.placeholder = state.currentUser?.role === "admin"
+    ? (state.aiConfig.apiKeyMasked ? `已配置 ${state.aiConfig.apiKeyMasked}` : "输入新的 API Key")
+    : "仅管理员可修改";
+  els.modelName.value = state.aiConfig.model || "";
   els.derivedFormulas.value = currentProject().derivedFormulas;
   els.chapterTitle.value = currentChapter()?.title ?? "";
   els.chapterNotes.value = currentChapter()?.notes ?? "";
+  const adminEditable = state.currentUser?.role === "admin";
+  [els.providerKind, els.apiBaseUrl, els.apiKey, els.modelName].forEach(input => input.disabled = !adminEditable);
+  els.aiAdminNote.textContent = adminEditable
+    ? "管理员可在这里维护 AI 接口格式、Base URL、模型和密钥。保存后所有协作者共用。"
+    : "AI 接口配置由管理员统一维护。普通用户可直接使用已配置模型发起生成。";
 }
 
 function renderProjectList() {
   els.projectList.innerHTML = "";
+  if (!state.currentUser) {
+    els.projectList.innerHTML = `<div class="tip">登录后可查看后端项目库。</div>`;
+    return;
+  }
   state.projects.forEach(project => {
     const article = document.createElement("article");
     article.className = "choice-item";
-    article.innerHTML = `<strong>${escapeHtml(project.title)}</strong><p>${project.chapters} 章节 · ${formatDate(project.updatedAt)}</p>`;
+    if (project.id === currentProject().id) article.style.outline = "2px solid rgba(143,45,34,.22)";
+    article.innerHTML = `
+      <strong>${escapeHtml(project.title)}</strong>
+      <p>${project.chapters} 章节 · ${formatDate(project.updatedAt)}</p>
+      <p>最后修改：${escapeHtml(project.lastEditedBy?.displayName || project.lastEditedBy?.username || "未知")}</p>`;
     article.addEventListener("click", async () => {
       try {
         const result = await apiFetch(`/projects/${project.id}`);
@@ -529,10 +636,24 @@ function renderChapterList() {
 
 function renderVersionList() {
   els.versionList.innerHTML = "";
+  if (!state.currentUser) {
+    els.versionList.innerHTML = `<div class="tip">登录后可查看版本历史与协作记录。</div>`;
+    els.versionCompare.textContent = "选择版本后可查看不同用户修改版本的对照。";
+    return;
+  }
+  if (!state.versions.length) {
+    els.versionList.innerHTML = `<div class="tip">当前项目暂无后端版本记录。</div>`;
+    els.versionCompare.textContent = "选择版本后可查看不同用户修改版本的对照。";
+    return;
+  }
   state.versions.slice(0, 8).forEach(version => {
     const article = document.createElement("article");
     article.className = "choice-item";
-    article.innerHTML = `<strong>${escapeHtml(version.label)}</strong><p>${formatDate(version.createdAt)}</p>`;
+    article.style.cursor = "pointer";
+    article.innerHTML = `
+      <strong>${escapeHtml(version.label)}</strong>
+      <p>${formatDate(version.createdAt)}</p>
+      <p>修改人：${escapeHtml(version.actor?.displayName || version.actor?.username || "系统")}</p>`;
     const button = document.createElement("button");
     button.className = "ghost";
     button.textContent = "恢复";
@@ -552,9 +673,15 @@ function renderVersionList() {
         flashStatus(`恢复失败：${error.message}`, true);
       }
     });
+    article.addEventListener("click", () => compareVersionWithPrevious(version.id));
     article.append(button);
     els.versionList.append(article);
   });
+  if (!state.versionCompare && state.versions.length >= 2) {
+    compareVersionWithPrevious(state.versions[0].id, true);
+  } else {
+    renderVersionCompare();
+  }
 }
 
 function renderMetrics() {
@@ -647,7 +774,58 @@ function renderGraph() {
       label.setAttribute("y", String((startY + endY) / 2 - 8));
       label.textContent = truncate(choice.label, 14);
       els.edgeLayer.append(label);
+
+      const handle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      handle.setAttribute("class", "edge-handle");
+      handle.setAttribute("cx", String(endX));
+      handle.setAttribute("cy", String(endY));
+      handle.setAttribute("r", "9");
+      handle.dataset.nodeId = node.id;
+      handle.dataset.choiceId = choice.id;
+      handle.addEventListener("pointerdown", event => startEdgeDrag(event, node.id, choice.id));
+      els.edgeLayer.append(handle);
     });
+  });
+}
+
+function bindCanvasInteractions() {
+  els.graphViewport.addEventListener("pointerdown", event => {
+    if (event.target.closest(".graph-node") || event.target.closest(".edge-handle")) return;
+    if (event.button !== 0) return;
+    interaction.panning = {
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: els.graphViewport.scrollLeft,
+      scrollTop: els.graphViewport.scrollTop
+    };
+    els.graphViewport.classList.add("is-panning");
+  });
+
+  window.addEventListener("pointermove", event => {
+    if (!interaction.panning) return;
+    const dx = event.clientX - interaction.panning.startX;
+    const dy = event.clientY - interaction.panning.startY;
+    els.graphViewport.scrollLeft = interaction.panning.scrollLeft - dx;
+    els.graphViewport.scrollTop = interaction.panning.scrollTop - dy;
+  });
+
+  const stopPan = () => {
+    if (!interaction.panning) return;
+    interaction.panning = null;
+    els.graphViewport.classList.remove("is-panning");
+  };
+
+  window.addEventListener("pointerup", stopPan);
+  window.addEventListener("pointercancel", stopPan);
+
+  window.addEventListener("pointermove", event => {
+    if (!interaction.edgeDrag) return;
+    updateEdgeDrag(event.clientX, event.clientY);
+  });
+
+  window.addEventListener("pointerup", event => {
+    if (!interaction.edgeDrag) return;
+    finishEdgeDrag(event.clientX, event.clientY);
   });
 }
 
@@ -803,30 +981,217 @@ function renderExportPreview() {
 }
 
 function renderAiStatus() {
-  const ready = currentProject().provider.apiKey && currentProject().provider.baseUrl && currentProject().provider.model;
-  els.aiStatus.textContent = ready ? "可调用 API" : "未连接";
+  const ready = Boolean(state.currentUser && state.aiConfig.hasApiKey && state.aiConfig.baseUrl && state.aiConfig.model);
+  els.aiStatus.textContent = !state.currentUser ? "请先登录" : ready ? "可调用 AI" : "待管理员配置";
   els.aiStatus.style.color = ready ? "#587164" : "#4b5754";
   els.aiStatus.style.background = ready ? "rgba(88,113,100,.15)" : "rgba(31,38,36,.08)";
+}
+
+function renderVersionCompare() {
+  if (!state.versionCompare) {
+    els.versionCompare.textContent = "选择版本后可查看不同用户修改版本的对照。";
+    return;
+  }
+  const { from, to, summary } = state.versionCompare;
+  els.versionCompare.innerHTML = `
+    <strong>${escapeHtml(to.label)}</strong>
+    <p>对照 ${escapeHtml(from.label)} · ${escapeHtml(to.actor?.displayName || to.actor?.username || "系统")} vs ${escapeHtml(from.actor?.displayName || from.actor?.username || "系统")}</p>
+    <p>章节变化 ${summary.chapterDelta >= 0 ? "+" : ""}${summary.chapterDelta} · 节点变化 ${summary.nodeDelta >= 0 ? "+" : ""}${summary.nodeDelta}</p>
+    <p>新增节点 ${summary.addedNodes} · 删除节点 ${summary.removedNodes} · 改文案 ${summary.changedText} · 改分支 ${summary.changedChoices} · 改指标 ${summary.changedEffects}</p>`;
+}
+
+function canUseAiProxy() {
+  return Boolean(state.backendOnline && state.currentUser && state.aiConfig.hasApiKey && state.aiConfig.baseUrl && state.aiConfig.model);
+}
+
+function ensureLoggedIn() {
+  if (state.currentUser) return true;
+  flashStatus("请先登录后再操作后端协作功能", true);
+  return false;
+}
+
+async function loadCurrentUser() {
+  try {
+    const result = await apiFetch("/auth/me");
+    state.currentUser = result.user;
+  } catch {
+    clearAuthState();
+    throw new Error("登录状态已失效，请重新登录");
+  }
+}
+
+async function loadAiConfig() {
+  if (!state.currentUser) return;
+  const endpoint = state.currentUser.role === "admin" ? "/admin/ai-config" : "/ai/config";
+  const result = await apiFetch(endpoint);
+  state.aiConfig = {
+    kind: result.config.kind || "openai",
+    baseUrl: result.config.baseUrl || "",
+    model: result.config.model || "",
+    hasApiKey: Boolean(result.config.hasApiKey),
+    apiKeyMasked: result.config.apiKeyMasked || "",
+    apiKeyInput: "",
+    updatedAt: result.config.updatedAt || null,
+    updatedBy: result.config.updatedBy || null
+  };
+}
+
+async function saveAiConfigIfAdmin() {
+  if (state.currentUser?.role !== "admin") return;
+  const payload = {
+    kind: state.aiConfig.kind,
+    baseUrl: state.aiConfig.baseUrl,
+    model: state.aiConfig.model
+  };
+  if (state.aiConfig.apiKeyInput?.trim()) payload.apiKey = state.aiConfig.apiKeyInput.trim();
+  const result = await apiFetch("/admin/ai-config", {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+  state.aiConfig = {
+    kind: result.config.kind || "openai",
+    baseUrl: result.config.baseUrl || "",
+    model: result.config.model || "",
+    hasApiKey: Boolean(result.config.hasApiKey),
+    apiKeyMasked: result.config.apiKeyMasked || "",
+    apiKeyInput: "",
+    updatedAt: result.config.updatedAt || null,
+    updatedBy: result.config.updatedBy || null
+  };
+}
+
+async function loginUser() {
+  try {
+    const username = els.authUsername.value.trim();
+    const password = els.authPassword.value.trim();
+    if (!username || !password) {
+      flashStatus("请输入用户名和密码", true);
+      return;
+    }
+    const result = await apiFetch("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password })
+    });
+    state.authToken = result.token;
+    localStorage.setItem(AUTH_TOKEN_KEY, result.token);
+    state.currentUser = result.user;
+    els.authPassword.value = "";
+    await syncBackendState();
+    flashStatus(`已登录为 ${result.user.displayName}`);
+  } catch (error) {
+    flashStatus(`登录失败：${error.message}`, true);
+  }
+}
+
+async function registerUser() {
+  try {
+    const displayName = els.authDisplayName.value.trim();
+    const username = els.authUsername.value.trim();
+    const password = els.authPassword.value.trim();
+    if (!displayName || !username || !password) {
+      flashStatus("显示名、用户名和密码都需要填写", true);
+      return;
+    }
+    await apiFetch("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ displayName, username, password })
+    });
+    await loginUser();
+  } catch (error) {
+    flashStatus(`注册失败：${error.message}`, true);
+  }
+}
+
+async function logoutUser() {
+  try {
+    if (state.authToken) {
+      await apiFetch("/auth/logout", { method: "POST" });
+    }
+  } catch {
+    // Ignore server logout failures and clear client state anyway.
+  }
+  clearAuthState();
+  await syncBackendState();
+  flashStatus("已退出登录");
+}
+
+function clearAuthState() {
+  state.authToken = "";
+  state.currentUser = null;
+  state.projects = [];
+  state.versions = [];
+  state.versionCompare = null;
+  state.aiConfig = { kind: "openai", baseUrl: "", model: "", hasApiKey: false, apiKeyMasked: "", apiKeyInput: "", updatedAt: null, updatedBy: null };
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+async function compareVersionWithPrevious(versionId, rerender = true) {
+  if (!state.currentUser || state.versions.length < 2) {
+    state.versionCompare = null;
+    if (rerender) renderVersionCompare();
+    return;
+  }
+  const currentIndex = state.versions.findIndex(version => version.id === versionId);
+  const compareIndex = currentIndex >= 0 && currentIndex < state.versions.length - 1 ? currentIndex + 1 : currentIndex - 1;
+  const baseVersion = state.versions[compareIndex];
+  const targetVersion = state.versions[currentIndex];
+  if (!baseVersion || !targetVersion) {
+    state.versionCompare = null;
+    if (rerender) renderVersionCompare();
+    return;
+  }
+  try {
+    const result = await apiFetch(`/projects/${currentProject().id}/versions/compare?from=${encodeURIComponent(baseVersion.id)}&to=${encodeURIComponent(targetVersion.id)}`);
+    state.versionCompare = result;
+  } catch (error) {
+    state.versionCompare = null;
+    flashStatus(`版本对照失败：${error.message}`, true);
+  }
+  if (rerender) renderVersionCompare();
 }
 
 async function syncBackendState() {
   try {
     const result = await apiFetch("/health");
     state.backendOnline = Boolean(result.ok);
-    const projects = await apiFetch("/projects");
-    state.projects = projects.projects;
-    await loadVersions();
+    try {
+      if (state.authToken) {
+        await loadCurrentUser();
+      } else {
+        state.currentUser = null;
+      }
+      if (state.currentUser) {
+        await loadAiConfig();
+        const projects = await apiFetch("/projects");
+        state.projects = projects.projects;
+        await loadVersions();
+      } else {
+        state.projects = [];
+        state.versions = [];
+        state.versionCompare = null;
+        state.aiConfig = { kind: "openai", baseUrl: "", model: "", hasApiKey: false, apiKeyMasked: "", apiKeyInput: "", updatedAt: null, updatedBy: null };
+      }
+    } catch {
+      state.currentUser = null;
+      state.projects = [];
+      state.versions = [];
+      state.versionCompare = null;
+      state.aiConfig = { kind: "openai", baseUrl: "", model: "", hasApiKey: false, apiKeyMasked: "", apiKeyInput: "", updatedAt: null, updatedBy: null };
+    }
   } catch {
     state.backendOnline = false;
+    state.currentUser = null;
     state.projects = [];
     state.versions = [];
+    state.versionCompare = null;
   }
   renderAll();
 }
 
 async function loadVersions() {
-  if (!state.backendOnline || !currentProject().id || currentProject().id === "sample_local") {
+  if (!state.backendOnline || !state.currentUser || !currentProject().id || currentProject().id === "sample_local") {
     state.versions = [];
+    state.versionCompare = null;
     return;
   }
   try {
@@ -839,6 +1204,7 @@ async function loadVersions() {
 
 async function createProjectOnServer() {
   try {
+    if (!ensureLoggedIn()) return;
     const title = `项目 ${new Date().toLocaleDateString("zh-CN")}`;
     const result = await apiFetch("/projects", { method: "POST", body: JSON.stringify({ title }) });
     state.project = normalizeProject(result.project);
@@ -856,6 +1222,8 @@ async function saveProjectToServer() {
       flashStatus("后端未启动，请先运行 npm start", true);
       return;
     }
+    if (!ensureLoggedIn()) return;
+    await saveAiConfigIfAdmin();
     const endpoint = state.projects.some(item => item.id === currentProject().id)
       ? `/projects/${currentProject().id}`
       : "/projects";
@@ -879,6 +1247,7 @@ async function saveProjectToServer() {
 
 async function createVersionOnServer() {
   try {
+    if (!ensureLoggedIn()) return;
     if (!state.backendOnline || !state.projects.some(item => item.id === currentProject().id)) {
       flashStatus("请先把项目保存到后端", true);
       return;
@@ -948,60 +1317,33 @@ async function refineNodeWithAi() {
 }
 
 async function requestGraphFromModel() {
-  if (!currentProject().provider.apiKey) return fallbackGenerateGraph();
+  if (!canUseAiProxy()) return fallbackGenerateGraph();
   const prompt =
     `项目：${currentProject().title}\n目标：${currentProject().projectGoal}\n章节：${currentChapter()?.title ?? ""}\n世界：${currentProject().worldNotes}\n主角：${protagonistSummary()}\n` +
     `指标：${currentProject().metrics.map(metric => `${metric.id}(${metric.initial}/${metric.min}-${metric.max})`).join(", ")}\n任务：${currentProject().generationBrief}\n` +
     "输出 JSON：{\"nodes\":[{id,title,speaker,kind,text,tags,notes,effects,choices:[{id,label,targetId,intent,note,effects}]}]}。";
-  const data = await requestAiJson(currentProject().systemPrompt, prompt, 0.8);
+  const data = await requestAiJson("/ai/generate-graph", currentProject().systemPrompt, prompt, 0.8);
   return normalizeGraphPayload(extractJson(extractAiText(data)));
 }
 
 async function requestNodeRefineFromModel(node, instruction) {
-  if (!currentProject().provider.apiKey) return fallbackRefineNode(node, instruction);
+  if (!canUseAiProxy()) return fallbackRefineNode(node, instruction);
   const prompt =
     `项目目标：${currentProject().projectGoal}\n章节：${currentChapter()?.title ?? ""}\n主角：${protagonistSummary()}\n当前节点：${JSON.stringify(node)}\n` +
     `调整要求：${instruction || "让节点更自然，同时保留训练目标。"}\n输出 JSON：{title,speaker,kind,text,tags,notes,effects,choices}`;
-  const data = await requestAiJson(currentProject().systemPrompt, prompt, 0.7);
+  const data = await requestAiJson("/ai/refine-node", currentProject().systemPrompt, prompt, 0.7);
   return normalizeNodePayload(extractJson(extractAiText(data)));
 }
 
-async function requestAiJson(systemPrompt, userPrompt, temperature) {
-  const provider = currentProject().provider;
-  const url = provider.kind === "anthropic" ? normalizeAnthropicUrl(provider.baseUrl) : normalizeUrl(provider.baseUrl, "/chat/completions");
-  const payload = provider.kind === "anthropic"
-    ? {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": provider.apiKey, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({
-          model: provider.model,
-          max_tokens: 2400,
-          temperature,
-          system: `${systemPrompt}\n仅输出 JSON，不要加解释文本。`,
-          messages: [{ role: "user", content: [{ type: "text", text: userPrompt }] }]
-        })
-      }
-    : {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${provider.apiKey}` },
-        body: JSON.stringify({
-          model: provider.model,
-          temperature,
-          response_format: { type: "json_object" },
-          messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }]
-        })
-      };
-  const response = await fetch(url, payload);
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error?.message ?? data.error?.type ?? "AI 请求失败");
-  return data;
+async function requestAiJson(pathname, systemPrompt, userPrompt, temperature) {
+  return apiFetch(pathname, {
+    method: "POST",
+    body: JSON.stringify({ systemPrompt, userPrompt, temperature })
+  });
 }
 
 function extractAiText(data) {
-  if (currentProject().provider.kind === "anthropic") {
-    return (data.content ?? []).filter(item => item.type === "text").map(item => item.text).join("\n");
-  }
-  return data.choices?.[0]?.message?.content ?? "";
+  return data?.text ?? "";
 }
 
 function fallbackGenerateGraph() {
@@ -1238,31 +1580,118 @@ function createNodeId() {
 }
 
 function normalizeGraphPayload(payload) {
-  return { nodes: (payload.nodes || []).map(normalizeNode) };
+  return { nodes: (payload.nodes || []).map((node, index) => normalizeNode(node, index, currentProject().metrics)) };
 }
 
 function normalizeNodePayload(node) {
-  return normalizeNode(node);
+  return normalizeNode(node, 0, currentProject().metrics);
 }
 
-function normalizeEffects(input) {
+function normalizeEffects(input, metrics = currentProject().metrics) {
+  const aliases = buildMetricAliases(metrics);
   const out = {};
-  Object.entries(input || {}).forEach(([key, value]) => {
-    const number = Number(value);
-    if (!Number.isNaN(number) && number !== 0) out[key] = number;
-  });
+
+  if (Array.isArray(input)) {
+    input.forEach(item => mergeEffects(out, normalizeEffects(item, metrics)));
+    return out;
+  }
+
+  if (input && typeof input === "object") {
+    Object.entries(input).forEach(([key, value]) => {
+      const metricId = aliases.get(normalizeMetricKey(key));
+      if (!metricId) return;
+      const number = extractNumericDelta(value);
+      if (!Number.isNaN(number) && number !== 0) out[metricId] = (out[metricId] || 0) + number;
+    });
+    return out;
+  }
+
+  if (typeof input === "string") {
+    return parseMetricEffectsFromText(input, aliases);
+  }
+
   return out;
+}
+
+function buildMetricAliases(metrics) {
+  const aliases = new Map();
+  metrics.forEach(metric => {
+    aliases.set(normalizeMetricKey(metric.id), metric.id);
+    aliases.set(normalizeMetricKey(metric.label), metric.id);
+  });
+  aliases.set("压力", "stress");
+  aliases.set("stress", "stress");
+  aliases.set("清晰度", "clarity");
+  aliases.set("clarity", "clarity");
+  aliases.set("信任", "trust");
+  aliases.set("trust", "trust");
+  return aliases;
+}
+
+function parseMetricEffectsFromText(text, aliases) {
+  const out = {};
+  const normalized = String(text)
+    .replaceAll("：", ":")
+    .replaceAll("，", ",")
+    .replaceAll("；", ";");
+
+  const patterns = [
+    /([A-Za-z\u4e00-\u9fa5_]+)\s*[:=]?\s*([+-]?\d+(?:\.\d+)?)/g,
+    /([A-Za-z\u4e00-\u9fa5_]+)\s*(增加|提升|上升|提高|减少|下降|降低|扣除|扣)\s*(\d+(?:\.\d+)?)/g
+  ];
+
+  patterns.forEach((pattern, index) => {
+    let match;
+    while ((match = pattern.exec(normalized)) !== null) {
+      const metricId = aliases.get(normalizeMetricKey(match[1]));
+      if (!metricId) continue;
+      let delta = 0;
+      if (index === 0) {
+        delta = Number(match[2]);
+      } else {
+        const sign = /(减少|下降|降低|扣除|扣)/.test(match[2]) ? -1 : 1;
+        delta = sign * Number(match[3]);
+      }
+      if (!Number.isNaN(delta) && delta !== 0) {
+        out[metricId] = (out[metricId] || 0) + delta;
+      }
+    }
+  });
+
+  return out;
+}
+
+function mergeEffects(target, source) {
+  Object.entries(source || {}).forEach(([key, value]) => {
+    target[key] = (target[key] || 0) + Number(value);
+  });
+}
+
+function normalizeMetricKey(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function extractNumericDelta(value) {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const matched = value.match(/[+-]?\d+(?:\.\d+)?/);
+    return matched ? Number(matched[0]) : NaN;
+  }
+  return NaN;
 }
 
 function makeDraggable(element, node) {
   let dragging = false;
+  let moved = false;
   let originX = 0;
   let originY = 0;
   let startX = 0;
   let startY = 0;
   element.addEventListener("pointerdown", event => {
     if (event.button !== 0) return;
+    event.stopPropagation();
     dragging = true;
+    moved = false;
     originX = event.clientX;
     originY = event.clientY;
     startX = node.position.x;
@@ -1271,23 +1700,113 @@ function makeDraggable(element, node) {
   });
   element.addEventListener("pointermove", event => {
     if (!dragging) return;
-    node.position = { x: Math.max(0, startX + (event.clientX - originX) / state.zoom), y: Math.max(0, startY + (event.clientY - originY) / state.zoom) };
-    renderGraph();
+    const nextX = Math.max(0, startX + (event.clientX - originX) / state.zoom);
+    const nextY = Math.max(0, startY + (event.clientY - originY) / state.zoom);
+    if (Math.abs(nextX - startX) > 2 || Math.abs(nextY - startY) > 2) {
+      moved = true;
+    }
+    node.position = { x: nextX, y: nextY };
+    element.style.left = `${nextX}px`;
+    element.style.top = `${nextY}px`;
     renderExportPreview();
   });
+  element.addEventListener("click", event => {
+    if (moved) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
   const stop = event => {
     if (!dragging) return;
     dragging = false;
     if (event.pointerId !== undefined) element.releasePointerCapture(event.pointerId);
+    if (moved) {
+      renderGraph();
+    }
     saveLocalDraft();
   };
   element.addEventListener("pointerup", stop);
   element.addEventListener("pointercancel", stop);
 }
 
+function startEdgeDrag(event, sourceNodeId, choiceId) {
+  event.preventDefault();
+  event.stopPropagation();
+  const sourceNode = currentChapter()?.nodes.find(node => node.id === sourceNodeId);
+  const choice = sourceNode?.choices.find(item => item.id === choiceId);
+  if (!sourceNode || !choice) return;
+
+  const startX = (sourceNode.position?.x ?? 0) + 240;
+  const startY = (sourceNode.position?.y ?? 0) + 92;
+  const tempPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  tempPath.setAttribute("class", "edge-path edge-path-dragging");
+  els.edgeLayer.append(tempPath);
+
+  interaction.edgeDrag = {
+    sourceNodeId,
+    choiceId,
+    startX,
+    startY,
+    tempPath
+  };
+  updateEdgeDrag(event.clientX, event.clientY);
+}
+
+function updateEdgeDrag(clientX, clientY) {
+  const drag = interaction.edgeDrag;
+  if (!drag) return;
+  const point = clientToGraphPoint(clientX, clientY);
+  const midX = (drag.startX + point.x) / 2;
+  drag.tempPath.setAttribute("d", `M ${drag.startX} ${drag.startY} C ${midX} ${drag.startY}, ${midX} ${point.y}, ${point.x} ${point.y}`);
+}
+
+function finishEdgeDrag(clientX, clientY) {
+  const drag = interaction.edgeDrag;
+  if (!drag) return;
+  const sourceNode = currentChapter()?.nodes.find(node => node.id === drag.sourceNodeId);
+  const choice = sourceNode?.choices.find(item => item.id === drag.choiceId);
+  const targetNode = findClosestNodeFromClientPoint(clientX, clientY, drag.sourceNodeId);
+  if (choice && targetNode) {
+    choice.targetId = targetNode.id;
+    saveLocalDraft();
+  }
+  drag.tempPath.remove();
+  interaction.edgeDrag = null;
+  renderAll();
+}
+
+function clientToGraphPoint(clientX, clientY) {
+  const rect = els.graphViewport.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left + els.graphViewport.scrollLeft) / state.zoom,
+    y: (clientY - rect.top + els.graphViewport.scrollTop) / state.zoom
+  };
+}
+
+function findClosestNodeFromClientPoint(clientX, clientY, excludeNodeId) {
+  const graphPoint = clientToGraphPoint(clientX, clientY);
+  const threshold = 180;
+  let closest = null;
+  for (const node of currentChapter()?.nodes ?? []) {
+    if (node.id === excludeNodeId) continue;
+    const centerX = (node.position?.x ?? 0) + 120;
+    const centerY = (node.position?.y ?? 0) + 92;
+    const distance = Math.hypot(centerX - graphPoint.x, centerY - graphPoint.y);
+    if (distance <= threshold && (!closest || distance < closest.distance)) {
+      closest = { node, distance };
+    }
+  }
+  return closest?.node ?? null;
+}
+
 async function apiFetch(pathname, options = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+    ...(state.authToken ? { Authorization: `Bearer ${state.authToken}` } : {}),
+    ...(options.headers || {})
+  };
   const response = await fetch(`${API_BASE}${pathname}`, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers,
     ...options
   });
   const data = await response.json();

@@ -48,6 +48,27 @@
         <section class="panel">
           <div class="section-heading">
             <div>
+              <h3>用户协作</h3>
+              <p class="panel-kicker">登录 / 注册</p>
+            </div>
+            <span class="status-pill" id="auth-status">未登录</span>
+          </div>
+          <div id="auth-user-summary" class="tip">游客模式。登录后可读取项目库并参与协作。</div>
+          <div class="auth-grid">
+            <label>显示名<input id="auth-display-name" type="text" placeholder="例如：策划A"></label>
+            <label>用户名<input id="auth-username" type="text" placeholder="user_a"></label>
+            <label class="span-2">密码<input id="auth-password" type="password" placeholder="输入密码"></label>
+          </div>
+          <div class="button-row">
+            <button id="login-btn" type="button">登录</button>
+            <button class="ghost" id="register-btn" type="button">注册</button>
+            <button class="ghost" id="logout-btn" type="button">退出</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-heading">
+            <div>
               <h3>项目库</h3>
               <p class="panel-kicker">本地后端</p>
             </div>
@@ -80,6 +101,7 @@
             <button class="text-button" id="refresh-versions-btn">刷新</button>
           </div>
           <div id="version-list" class="choice-list"></div>
+          <div id="version-compare" class="tip">选择版本后可查看不同用户修改版本的对照。</div>
         </section>
 
         <section class="panel">
@@ -92,61 +114,86 @@
           <label>世界备注<textarea id="world-notes" rows="4" placeholder="家庭客厅、冲突后期、精灵仅主角可见"></textarea></label>
         </section>
 
-        <section class="panel">
-          <div class="section-heading">
-            <h3>主角设定</h3>
-            <button class="text-button" id="apply-protagonist-btn">同步到提示词</button>
-          </div>
-          <label>主角姓名<input id="hero-name" type="text" placeholder="林澈"></label>
-          <label>主角定位<input id="hero-role" type="text" placeholder="高中生，冲突中的观察者"></label>
-          <label>核心特质<textarea id="hero-traits" rows="3" placeholder="敏感、想证明自己、会压抑真实需求"></textarea></label>
-          <label>当前目标<input id="hero-goal" type="text" placeholder="先稳定局面，再尝试表达真实感受"></label>
-        </section>
-
-        <section class="panel">
-          <div class="section-heading">
-            <h3>系统提示词</h3>
-            <button class="text-button" id="reset-system-prompt-btn">恢复推荐</button>
-          </div>
-          <label>任务预设<select id="preset-select"></select></label>
-          <label>System Prompt<textarea id="system-prompt" rows="10"></textarea></label>
-          <label>用户指令<textarea id="generation-brief" rows="5" placeholder="例如：生成一段 6 节点的训练型冲突对话，包含一次误判与一次精灵纠偏"></textarea></label>
-        </section>
-
-        <section class="panel">
-          <div class="section-heading">
-            <h3>AI 生成</h3>
-            <span class="status-pill" id="ai-status">未连接</span>
-          </div>
-          <label>接口格式
-            <select id="provider-kind">
-              <option value="openai">OpenAI Compatible</option>
-              <option value="anthropic">Anthropic Messages</option>
-            </select>
-          </label>
-          <label>API Base URL<input id="api-base-url" type="text" placeholder="https://api.openai.com/v1"></label>
-          <label>API Key<input id="api-key" type="password" placeholder="仅保存在当前浏览器"></label>
-          <label>模型<input id="model-name" type="text" placeholder="gpt-4.1-mini"></label>
-          <div class="button-row">
-            <button id="generate-graph-btn">AI 生成分支</button>
-            <button class="ghost" id="refine-node-btn">AI 调整当前节点</button>
-          </div>
-          <label>AI 调整说明<textarea id="refine-instruction" rows="4" placeholder="例如：把当前节点改得更克制，减少说教，保留 CBT 训练目的"></textarea></label>
-          <p class="tip">未配置 API 时，页面会使用本地模板生成草案，方便先走内容结构。</p>
-        </section>
-
-        <section class="panel">
-          <div class="section-heading">
-            <h3>指标与规则</h3>
-            <button class="text-button" id="add-metric-btn">新增指标</button>
-          </div>
-          <div id="metric-list" class="metric-list"></div>
-          <label>衍生指标公式<textarea id="derived-formulas" rows="4" placeholder="balance = clarity - stress&#10;stability = trust + clarity - stress / 2"></textarea></label>
-          <p class="tip">节点和选项都可以写入指标变化，右侧会实时预览结果。</p>
-        </section>
       </aside>
 
       <section class="center-panel">
+        <section class="panel tabs-panel global-tabs-panel">
+          <div class="section-heading">
+            <div>
+              <p class="panel-kicker">工作区配置</p>
+              <h3>全局设定标签</h3>
+            </div>
+            <div class="button-row compact tab-buttons" id="global-tab-buttons">
+              <button class="ghost is-active" type="button" data-tab-group="global" data-tab-target="setup">主角与上下文</button>
+              <button class="ghost" type="button" data-tab-group="global" data-tab-target="prompt">AI 工作台</button>
+              <button class="ghost" type="button" data-tab-group="global" data-tab-target="metrics">数值规则</button>
+            </div>
+          </div>
+          <div class="tab-panels">
+            <section class="tab-panel is-active setup-panel" data-tab-group="global" data-tab-panel="setup">
+              <div class="section-heading">
+                <div>
+                  <p class="panel-kicker">全局设定</p>
+                  <h3>主角与叙事上下文</h3>
+                </div>
+                <button class="text-button" id="apply-protagonist-btn">同步到提示词</button>
+              </div>
+              <div class="setup-grid">
+                <label>主角姓名<input id="hero-name" type="text" placeholder="林澈"></label>
+                <label>主角定位<input id="hero-role" type="text" placeholder="高中生，冲突中的观察者"></label>
+                <label class="span-2">核心特质<textarea id="hero-traits" rows="3" placeholder="敏感、想证明自己、会压抑真实需求"></textarea></label>
+                <label class="span-2">当前目标<input id="hero-goal" type="text" placeholder="先稳定局面，再尝试表达真实感受"></label>
+              </div>
+            </section>
+
+            <section class="tab-panel prompt-panel" data-tab-group="global" data-tab-panel="prompt">
+              <div class="section-heading">
+                <div>
+                  <p class="panel-kicker">AI 工作台</p>
+                  <h3>提示词、模型与生成</h3>
+                </div>
+                <div class="button-row compact">
+                  <span class="status-pill" id="ai-status">未连接</span>
+                  <button class="text-button" id="reset-system-prompt-btn">恢复推荐</button>
+                </div>
+              </div>
+              <div class="prompt-grid">
+                <label>任务预设<select id="preset-select"></select></label>
+                <label>接口格式
+                  <select id="provider-kind">
+                    <option value="openai">OpenAI Compatible</option>
+                    <option value="anthropic">Anthropic Messages</option>
+                  </select>
+                </label>
+                <label>API Base URL<input id="api-base-url" type="text" placeholder="https://api.openai.com/v1"></label>
+                <label>模型<input id="model-name" type="text" placeholder="gpt-4.1-mini"></label>
+                <label class="span-2">API Key<input id="api-key" type="password" placeholder="仅保存在当前浏览器"></label>
+                <label class="span-2">System Prompt<textarea id="system-prompt" rows="6"></textarea></label>
+                <label class="span-2">用户指令<textarea id="generation-brief" rows="4" placeholder="例如：生成一段 6 节点的训练型冲突对话，包含一次误判与一次精灵纠偏"></textarea></label>
+                <label class="span-2">AI 调整说明<textarea id="refine-instruction" rows="3" placeholder="例如：把当前节点改得更克制，减少说教，保留 CBT 训练目的"></textarea></label>
+              </div>
+              <div id="ai-admin-note" class="tip">AI 接口配置仅管理员可修改。普通用户可直接使用已配置的模型能力。</div>
+              <div class="button-row">
+                <button id="generate-graph-btn">AI 生成分支</button>
+                <button class="ghost" id="refine-node-btn">AI 调整当前节点</button>
+              </div>
+              <p class="tip">先确定主角和提示词，再让 AI 起草，最后在右侧做人工精修。</p>
+            </section>
+
+            <section class="tab-panel metrics-panel" data-tab-group="global" data-tab-panel="metrics">
+              <div class="section-heading">
+                <div>
+                  <p class="panel-kicker">数值规则</p>
+                  <h3>指标与衍生公式</h3>
+                </div>
+                <button class="text-button" id="add-metric-btn">新增指标</button>
+              </div>
+              <div id="metric-list" class="metric-list"></div>
+              <label>衍生指标公式<textarea id="derived-formulas" rows="4" placeholder="balance = clarity - stress&#10;stability = trust + clarity - stress / 2"></textarea></label>
+            </section>
+          </div>
+        </section>
+
         <div class="panel flow-header">
           <div>
             <p class="panel-kicker">节点流程可视化</p>
@@ -193,54 +240,76 @@
       </section>
 
       <aside class="sidebar right-panel">
-        <section class="panel">
+        <section class="panel editor-panel tabs-panel">
           <div class="section-heading">
             <div>
-              <p class="panel-kicker">章节 / 节点编辑</p>
+              <p class="panel-kicker">当前内容编辑</p>
               <h2 id="selected-node-title">未选择节点</h2>
             </div>
-            <button class="text-button" id="new-choice-btn">新增选项</button>
+            <div class="button-row compact tab-buttons" id="editor-tab-buttons">
+              <button class="ghost is-active" type="button" data-tab-group="editor" data-tab-target="chapter-node">章节/节点</button>
+              <button class="ghost" type="button" data-tab-group="editor" data-tab-target="effects">指标</button>
+              <button class="ghost" type="button" data-tab-group="editor" data-tab-target="choices">分支</button>
+              <button class="ghost" type="button" data-tab-group="editor" data-tab-target="export">导出</button>
+            </div>
           </div>
-          <label>当前章节标题<input id="chapter-title" type="text" placeholder="第一章：家里的风暴"></label>
-          <label>章节备注<textarea id="chapter-notes" rows="3" placeholder="本章设计目标、收束方式、人物安排"></textarea></label>
-          <label>节点标题<input id="node-title" type="text" placeholder="节点标题"></label>
-          <label>说话者<input id="node-speaker" type="text" placeholder="母亲 / 主角 / 精灵"></label>
-          <label>节点类型
-            <select id="node-kind">
-              <option value="start">开场</option>
-              <option value="dialogue">普通对话</option>
-              <option value="training">训练节点</option>
-              <option value="reflection">反思节点</option>
-              <option value="ending">结局节点</option>
-            </select>
-          </label>
-          <label>文本内容<textarea id="node-text" rows="7" placeholder="输入节点文案"></textarea></label>
-          <label>标签<input id="node-tags" type="text" placeholder="fact, thought, conflict, cbt"></label>
-          <label>教学意图 / 设计注释<textarea id="node-notes" rows="4" placeholder="例如：让玩家先误把推断当成事实，再由精灵进行纠偏"></textarea></label>
-        </section>
+          <div class="tab-panels">
+            <section class="tab-panel is-active" data-tab-group="editor" data-tab-panel="chapter-node">
+              <div class="editor-stack">
+                <section class="editor-block">
+                  <div class="section-heading">
+                    <h3>章节</h3>
+                  </div>
+                  <label>当前章节标题<input id="chapter-title" type="text" placeholder="第一章：家里的风暴"></label>
+                  <label>章节备注<textarea id="chapter-notes" rows="3" placeholder="本章设计目标、收束方式、人物安排"></textarea></label>
+                </section>
+                <section class="editor-block">
+                  <div class="section-heading">
+                    <div><h3>节点</h3></div>
+                    <button class="text-button" id="new-choice-btn">新增选项</button>
+                  </div>
+                  <label>节点标题<input id="node-title" type="text" placeholder="节点标题"></label>
+                  <label>说话者<input id="node-speaker" type="text" placeholder="母亲 / 主角 / 精灵"></label>
+                  <label>节点类型
+                    <select id="node-kind">
+                      <option value="start">开场</option>
+                      <option value="dialogue">普通对话</option>
+                      <option value="training">训练节点</option>
+                      <option value="reflection">反思节点</option>
+                      <option value="ending">结局节点</option>
+                    </select>
+                  </label>
+                  <label>文本内容<textarea id="node-text" rows="7" placeholder="输入节点文案"></textarea></label>
+                  <label>标签<input id="node-tags" type="text" placeholder="fact, thought, conflict, cbt"></label>
+                  <label>教学意图 / 设计注释<textarea id="node-notes" rows="4" placeholder="例如：让玩家先误把推断当成事实，再由精灵进行纠偏"></textarea></label>
+                </section>
+              </div>
+            </section>
 
-        <section class="panel">
-          <div class="section-heading">
-            <h3>节点指标变化</h3>
-            <button class="text-button" id="reset-node-effects-btn">清空</button>
-          </div>
-          <div id="node-effects" class="effects-grid"></div>
-        </section>
+            <section class="tab-panel" data-tab-group="editor" data-tab-panel="effects">
+              <div class="section-heading">
+                <h3>节点指标变化</h3>
+                <button class="text-button" id="reset-node-effects-btn">清空</button>
+              </div>
+              <div id="node-effects" class="effects-grid"></div>
+            </section>
 
-        <section class="panel">
-          <div class="section-heading">
-            <h3>分支选项</h3>
-            <button class="text-button" id="smart-links-btn">智能连线</button>
-          </div>
-          <div id="choice-list" class="choice-list"></div>
-        </section>
+            <section class="tab-panel" data-tab-group="editor" data-tab-panel="choices">
+              <div class="section-heading">
+                <h3>分支选项</h3>
+                <button class="text-button" id="smart-links-btn">智能连线</button>
+              </div>
+              <div id="choice-list" class="choice-list"></div>
+            </section>
 
-        <section class="panel">
-          <div class="section-heading">
-            <h3>导出预览</h3>
-            <button class="text-button" id="copy-export-btn">复制当前导出</button>
+            <section class="tab-panel" data-tab-group="editor" data-tab-panel="export">
+              <div class="section-heading">
+                <h3>导出预览</h3>
+                <button class="text-button" id="copy-export-btn">复制当前导出</button>
+              </div>
+              <textarea id="export-preview" rows="12" readonly></textarea>
+            </section>
           </div>
-          <textarea id="export-preview" rows="12" readonly></textarea>
         </section>
       </aside>
     </main>
