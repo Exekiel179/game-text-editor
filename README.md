@@ -223,6 +223,26 @@ docker run -d \
 
 The container writes all persistent runtime state into `/app/data`.
 
+## GHCR Publishing
+
+This repository now includes a GitHub Actions workflow:
+
+```text
+.github/workflows/publish-ghcr.yml
+```
+
+It publishes the container image to GHCR on:
+
+- push to `main`
+- push of tags matching `v*`
+- manual workflow dispatch
+
+Expected image path:
+
+```text
+ghcr.io/exekiel179/game-text-editor
+```
+
 ## Main Files
 
 - `index.html`
