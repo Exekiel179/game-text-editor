@@ -11,6 +11,7 @@ const PROJECTS_DIR = path.join(STORAGE_DIR, "projects");
 const USERS_FILE = path.join(STORAGE_DIR, "users.json");
 const SESSIONS_FILE = path.join(STORAGE_DIR, "sessions.json");
 const AI_CONFIG_FILE = path.join(STORAGE_DIR, "ai_config.json");
+const INVITES_FILE = path.join(STORAGE_DIR, "invite_codes.json");
 const ADMIN_BOOTSTRAP_FILE = path.join(STORAGE_DIR, "admin_bootstrap.json");
 
 const DEFAULT_AI_CONFIG = {
@@ -113,6 +114,19 @@ async function handleApi(req, res, url) {
     const body = await readJsonBody(req);
     const config = updateAiConfig(body, user);
     sendJson(res, 200, { config: maskAiConfig(config, true) });
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/admin/invite-codes") {
+    requireAdmin(user);
+    sendJson(res, 200, { invites: listInviteCodes() });
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/admin/invite-codes") {
+    requireAdmin(user);
+    const invite = createInviteCode(user);
+    sendJson(res, 201, { invite });
     return;
   }
 
@@ -222,7 +236,7 @@ async function handleStatic(req, res, url) {
     res.end();
     return;
   }
-  const relativePath = url.pathname === "/" ? "/index.html" : url.pathname;
+  const relativePath = url.pathname === "/login" ? "/login.html" : (url.pathname === "/" ? "/index.html" : url.pathname);
   const safePath = path.normalize(relativePath).replace(/^(\.\.[/\\])+/, "");
   const filePath = path.join(ROOT, safePath);
   if (!filePath.startsWith(ROOT)) {
@@ -247,6 +261,7 @@ function bootstrapStorage() {
   ensureJsonFile(USERS_FILE, []);
   ensureJsonFile(SESSIONS_FILE, []);
   ensureJsonFile(AI_CONFIG_FILE, DEFAULT_AI_CONFIG);
+  ensureJsonFile(INVITES_FILE, []);
   ensureAdminUser();
 }
 
@@ -300,9 +315,11 @@ function registerUser(body) {
   const username = String(body?.username || "").trim();
   const password = String(body?.password || "").trim();
   const displayName = String(body?.displayName || username).trim();
-  if (!username || !password) throw new Error("用户名和密码必填");
+  const inviteCode = String(body?.inviteCode || "").trim().toUpperCase();
+  if (!username || !password || !inviteCode) throw new Error("用户名、密码和邀请码必填");
   const users = readUsers();
   if (users.some(user => user.username === username)) throw new Error("用户名已存在");
+  consumeInviteCode(inviteCode);
   const user = {
     id: `user_${Date.now().toString(36)}_${crypto.randomBytes(3).toString("hex")}`,
     username,
@@ -313,6 +330,7 @@ function registerUser(body) {
   };
   users.push(user);
   writeJson(USERS_FILE, users);
+  attachInviteUsage(username, inviteCode);
   return user;
 }
 
@@ -360,6 +378,52 @@ function readSessions() {
 
 function readAiConfig() {
   return { ...DEFAULT_AI_CONFIG, ...readJson(AI_CONFIG_FILE, DEFAULT_AI_CONFIG) };
+}
+
+function readInviteCodes() {
+  return readJson(INVITES_FILE, []);
+}
+
+function listInviteCodes() {
+  return readInviteCodes().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+}
+
+function createInviteCode(user) {
+  const invites = readInviteCodes();
+  const code = generateInviteCode();
+  const invite = {
+    code,
+    createdAt: new Date().toISOString(),
+    createdBy: { id: user.id, username: user.username, displayName: user.displayName },
+    usedAt: null,
+    usedBy: null
+  };
+  invites.unshift(invite);
+  writeJson(INVITES_FILE, invites);
+  return invite;
+}
+
+function consumeInviteCode(code) {
+  const invites = readInviteCodes();
+  const invite = invites.find(item => item.code === code);
+  if (!invite) throw new Error("邀请码无效");
+  if (invite.usedAt) throw new Error("邀请码已使用");
+  invite.usedAt = new Date().toISOString();
+  invite.usedBy = "pending";
+  writeJson(INVITES_FILE, invites);
+}
+
+function attachInviteUsage(username, code) {
+  const invites = readInviteCodes();
+  const invite = invites.find(item => item.code === code);
+  if (!invite) return;
+  invite.usedBy = username;
+  if (!invite.usedAt) invite.usedAt = new Date().toISOString();
+  writeJson(INVITES_FILE, invites);
+}
+
+function generateInviteCode() {
+  return crypto.randomBytes(4).toString("hex").toUpperCase();
 }
 
 function updateAiConfig(body, user) {
@@ -452,6 +516,13 @@ function createProject(title, user) {
     title,
     projectGoal: "",
     worldNotes: "",
+    worldBook: "",
+    characterBook: "",
+    plotBrief: "",
+    characters: [
+      { id: "char_protagonist", name: "主角", roleType: "protagonist", narrativeRole: "", traits: "", goal: "", context: "" },
+      { id: "char_narrator", name: "旁白", roleType: "narrator", narrativeRole: "", traits: "", goal: "", context: "" }
+    ],
     protagonist: { name: "", role: "", traits: "", goal: "" },
     preset: "cbt_training",
     systemPrompt: "",
@@ -472,9 +543,12 @@ function createChapter(title) {
     title,
     slug: slugify(title),
     notes: "",
+    chapterBook: "",
     nodes: [{
       id: "n1",
       title: "开场",
+      characterId: "",
+      speakerRoleType: "narrator",
       speaker: "旁白",
       kind: "start",
       text: "在这里开始你的章节。",
@@ -501,6 +575,10 @@ function normalizeProject(project) {
     title: project.title || project.projectTitle || "未命名项目",
     projectGoal: project.projectGoal || "",
     worldNotes: project.worldNotes || "",
+    worldBook: project.worldBook || "",
+    characterBook: project.characterBook || "",
+    plotBrief: project.plotBrief || "",
+    characters: Array.isArray(project.characters) ? project.characters : [],
     protagonist: project.protagonist || { name: "", role: "", traits: "", goal: "" },
     preset: project.preset || "cbt_training",
     systemPrompt: project.systemPrompt || "",
@@ -521,6 +599,7 @@ function normalizeChapter(chapter) {
     title: chapter.title || "未命名章节",
     slug: slugify(chapter.slug || chapter.title || "chapter"),
     notes: chapter.notes || "",
+    chapterBook: chapter.chapterBook || "",
     nodes: Array.isArray(chapter.nodes) ? chapter.nodes : []
   };
 }
@@ -534,6 +613,7 @@ function buildGodotExport(project) {
       content: {
         project_id: project.id,
         project_title: project.title,
+        characters: project.characters || [],
         chapter_id: chapter.id,
         chapter_title: chapter.title,
         chapter_slug: chapter.slug,
@@ -541,6 +621,8 @@ function buildGodotExport(project) {
         derived_formulas: project.derivedFormulas,
         nodes: chapter.nodes.map(node => ({
           id: node.id,
+          character_id: node.characterId || node.character_id || "",
+          speaker_role_type: node.speakerRoleType || node.speaker_role_type || "",
           speaker: node.speaker,
           title: node.title,
           type: node.kind,

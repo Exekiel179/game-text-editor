@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MentalSoul Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f2eadf;
+      --paper-deep: #e4d6c5;
+      --ink: #1f2624;
+      --ink-soft: #4b5754;
+      --accent: #8f2d22;
+      --moss: #587164;
+      --line: rgba(51, 44, 37, 0.22);
+      --shadow: 0 20px 60px rgba(49, 35, 24, 0.16);
+      --radius: 28px;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 1.5rem;
+      background:
+        radial-gradient(circle at top left, rgba(143, 45, 34, 0.1), transparent 30%),
+        radial-gradient(circle at bottom right, rgba(88, 113, 100, 0.14), transparent 32%),
+        linear-gradient(180deg, #f4ede3, #efe5d8 54%, #e8dbca);
+      color: var(--ink);
+      font-family: "IBM Plex Sans", sans-serif;
+    }
+
+    .shell {
+      width: min(1080px, 100%);
+      display: grid;
+      grid-template-columns: 1.1fr minmax(360px, 420px);
+      gap: 1rem;
+    }
+
+    .hero,
+    .card {
+      border: 1px solid rgba(49, 35, 24, 0.1);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(255, 251, 247, 0.92), rgba(247, 240, 230, 0.78));
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      padding: 2rem;
+      display: grid;
+      align-content: end;
+      min-height: 640px;
+      background:
+        radial-gradient(circle at top right, rgba(143, 45, 34, 0.12), transparent 28%),
+        linear-gradient(180deg, rgba(255, 251, 247, 0.94), rgba(239, 228, 213, 0.84));
+    }
+
+    .eyebrow {
+      margin: 0 0 0.4rem;
+      font-size: 0.78rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    h1, h2 {
+      margin: 0;
+      font-family: "Cormorant Garamond", serif;
+      line-height: 0.95;
+    }
+
+    h1 { font-size: clamp(3rem, 6vw, 5.2rem); }
+    h2 { font-size: 2rem; }
+
+    .hero p {
+      max-width: 32rem;
+      line-height: 1.6;
+      color: var(--ink-soft);
+    }
+
+    .points {
+      display: grid;
+      gap: 0.8rem;
+      margin-top: 1.25rem;
+    }
+
+    .point {
+      padding: 0.9rem 1rem;
+      border-radius: 18px;
+      background: rgba(255, 250, 245, 0.68);
+      border: 1px solid rgba(49, 35, 24, 0.08);
+    }
+
+    .card {
+      padding: 1.5rem;
+      display: grid;
+      gap: 1rem;
+      align-content: start;
+    }
+
+    .toggle-row,
+    .button-row {
+      display: flex;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+    }
+
+    .toggle {
+      border: 0;
+      border-radius: 999px;
+      padding: 0.65rem 0.9rem;
+      cursor: pointer;
+      background: rgba(31, 38, 36, 0.08);
+      color: var(--ink);
+    }
+
+    .toggle.is-active,
+    button[type="submit"] {
+      background: var(--ink);
+      color: #f7f1e7;
+    }
+
+    label {
+      display: grid;
+      gap: 0.45rem;
+      color: var(--ink-soft);
+      font-size: 0.92rem;
+    }
+
+    input {
+      width: 100%;
+      border-radius: 16px;
+      border: 1px solid rgba(49, 35, 24, 0.14);
+      background: rgba(255, 250, 244, 0.74);
+      padding: 0.9rem 0.95rem;
+      color: var(--ink);
+      outline: none;
+      font: inherit;
+    }
+
+    input:focus {
+      border-color: rgba(143, 45, 34, 0.45);
+      box-shadow: 0 0 0 4px rgba(143, 45, 34, 0.1);
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 0.78rem 1.05rem;
+      cursor: pointer;
+      font: inherit;
+    }
+
+    .ghost {
+      background: rgba(255, 249, 240, 0.72);
+      color: var(--ink);
+      border: 1px solid rgba(49, 35, 24, 0.1);
+    }
+
+    .error {
+      display: none;
+      padding: 0.85rem 0.95rem;
+      border-radius: 16px;
+      background: rgba(143, 45, 34, 0.08);
+      color: var(--accent);
+      border: 1px solid rgba(143, 45, 34, 0.14);
+    }
+
+    .error.show { display: block; }
+    .form-grid { display: grid; gap: 0.85rem; }
+    .muted { color: var(--ink-soft); line-height: 1.6; }
+
+    @media (max-width: 960px) {
+      .shell { grid-template-columns: 1fr; }
+      .hero { min-height: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">MentalSoul Studio</p>
+        <h1>对话树不是表单，是排演场。</h1>
+      </div>
+      <div>
+        <p>这个版本把登录从主界面移出，编辑器只保留项目、角色卡、节点和画布。协作状态统一收在右上角，避免在创作时被表单打断。</p>
+        <div class="points">
+          <div class="point"><strong>角色卡驱动</strong><p class="muted">主角、NPC、旁白、精灵、人格面具统一归为角色卡管理。</p></div>
+          <div class="point"><strong>AI 可折叠</strong><p class="muted">基础配置和生成工具默认折叠，把画布留给分支结构本身。</p></div>
+          <div class="point"><strong>节点角色类型</strong><p class="muted">每段对话都必须声明角色类型，避免口吻和叙事边界混乱。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div>
+        <p class="eyebrow">Access</p>
+        <h2 id="form-title">登录协作空间</h2>
+      </div>
+
+      <div class="toggle-row">
+        <button class="toggle is-active" id="show-login" type="button">登录</button>
+        <button class="toggle" id="show-register" type="button">注册</button>
+      </div>
+
+      <div class="error" id="error-box"></div>
+
+      <form id="login-form" class="form-grid">
+        <label>用户名<input id="login-username" type="text" autocomplete="username" required></label>
+        <label>密码<input id="login-password" type="password" autocomplete="current-password" required></label>
+        <div class="button-row">
+          <button type="submit">登录</button>
+        </div>
+      </form>
+
+      <form id="register-form" class="form-grid" hidden>
+        <label>显示名<input id="register-display-name" type="text" required></label>
+        <label>用户名<input id="register-username" type="text" autocomplete="username" required></label>
+        <label>密码<input id="register-password" type="password" autocomplete="new-password" required></label>
+        <label>邀请码<input id="register-invite-code" type="text" placeholder="请输入管理员生成的邀请码" required></label>
+        <p class="muted">注册需要邀请码。注册后会直接登录并进入编辑器。</p>
+        <div class="button-row">
+          <button type="submit">注册并进入</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <script>
+    const AUTH_TOKEN_KEY = "mindweaver-auth-token";
+    const errorBox = document.getElementById("error-box");
+    const loginForm = document.getElementById("login-form");
+    const registerForm = document.getElementById("register-form");
+    const showLoginBtn = document.getElementById("show-login");
+    const showRegisterBtn = document.getElementById("show-register");
+    const formTitle = document.getElementById("form-title");
+
+    if (localStorage.getItem(AUTH_TOKEN_KEY)) {
+      window.location.href = "/";
+    }
+
+    function setMode(mode) {
+      const login = mode === "login";
+      loginForm.hidden = !login;
+      registerForm.hidden = login;
+      showLoginBtn.classList.toggle("is-active", login);
+      showRegisterBtn.classList.toggle("is-active", !login);
+      formTitle.textContent = login ? "登录协作空间" : "创建协作账号";
+      errorBox.classList.remove("show");
+      errorBox.textContent = "";
+    }
+
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.classList.add("show");
+    }
+
+    async function request(path, payload) {
+      const response = await fetch(`/api${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error?.message || "请求失败");
+      }
+      return data;
+    }
+
+    showLoginBtn.addEventListener("click", () => setMode("login"));
+    showRegisterBtn.addEventListener("click", () => setMode("register"));
+
+    loginForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      try {
+        const result = await request("/auth/login", {
+          username: document.getElementById("login-username").value.trim(),
+          password: document.getElementById("login-password").value
+        });
+        localStorage.setItem(AUTH_TOKEN_KEY, result.token);
+        window.location.href = "/";
+      } catch (error) {
+        showError(`登录失败：${error.message}`);
+      }
+    });
+
+    registerForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      try {
+        const displayName = document.getElementById("register-display-name").value.trim();
+        const username = document.getElementById("register-username").value.trim();
+        const password = document.getElementById("register-password").value;
+        const inviteCode = document.getElementById("register-invite-code").value.trim();
+        await request("/auth/register", { displayName, username, password, inviteCode });
+        const login = await request("/auth/login", { username, password });
+        localStorage.setItem(AUTH_TOKEN_KEY, login.token);
+        window.location.href = "/";
+      } catch (error) {
+        showError(`注册失败：${error.message}`);
+      }
+    });
+  </script>
+</body>
+</html>

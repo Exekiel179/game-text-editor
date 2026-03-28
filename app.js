@@ -25,6 +25,14 @@ const PRESETS = {
   }
 };
 
+const ROLE_TYPES = {
+  protagonist: "主角",
+  npc: "NPC",
+  narrator: "旁白",
+  spirit: "精灵",
+  mask: "人格面具"
+};
+
 const DEFAULT_METRICS = [
   { id: "stress", label: "压力", min: 0, max: 100, initial: 48, color: "#a33c2f" },
   { id: "clarity", label: "清晰度", min: 0, max: 100, initial: 36, color: "#587164" },
@@ -36,6 +44,16 @@ const SAMPLE_PROJECT = {
   title: "第一章：家里的风暴",
   projectGoal: "让玩家在家庭冲突里练习区分事实与想法",
   worldNotes: "场景为家庭客厅。母亲和父亲刚发生争执，精灵只有主角能看见，会在关键节点提示。",
+  worldBook: "世界规则：家庭客厅冲突场景；精灵只有主角能看见；旁白只写可观察到的环境与动作；人格面具用于主角内在自动想法。",
+  characterBook: "人物关系：母亲焦躁但并非恶意；精灵负责提醒而不是替玩家做决定；人格面具会放大风险感但不直接改变外部对话。",
+  plotBrief: "晚餐前的家庭冲突升级，主角需要从情绪裹挟里退一步，重新组织表达。",
+  characters: [
+    { id: "char_protagonist", name: "林澈", roleType: "protagonist", narrativeRole: "高一学生，冲突中的观察者", traits: "敏感，习惯先猜别人的态度，遇压会退缩", goal: "先稳住局面，再尝试表达自己的感受", context: "主视角角色，玩家主要代入对象。" },
+    { id: "char_mother", name: "母亲", roleType: "npc", narrativeRole: "家庭冲突中的施压方", traits: "焦躁、委屈、说话容易带判断", goal: "希望家里的事被认真对待", context: "容易把失望直接说成态度判断。" },
+    { id: "char_spirit", name: "精灵", roleType: "spirit", narrativeRole: "训练引导者", traits: "克制、明确、不说教", goal: "帮助主角区分事实、想法和情绪", context: "只被主角看见，负责轻量纠偏。" },
+    { id: "char_narrator", name: "旁白", roleType: "narrator", narrativeRole: "环境与动作说明", traits: "客观、克制、不解释内心", goal: "提供场景信息", context: "不直接替角色做心理判断。" },
+    { id: "char_mask", name: "内心面具", roleType: "mask", narrativeRole: "主角内在自我攻击/防御化声音", traits: "尖锐、放大风险、像自动念头", goal: "保护主角不再受伤", context: "用于内心独白或自动化想法。" }
+  ],
   protagonist: {
     name: "林澈",
     role: "高一学生，冲突中的观察者",
@@ -54,10 +72,13 @@ const SAMPLE_PROJECT = {
       title: "第一章：家里的风暴",
       slug: "ch01_home_storm",
       notes: "第一章训练目标：在高压家庭冲突中拆分事实、想法和需求。",
+      chapterBook: "本章必须从误判进入，再由精灵提示，最后回到主角决定是否重构表达。负向结局保留，但不能喧宾夺主。",
       nodes: [
         {
           id: "n1",
           title: "晚餐前的空气",
+          characterId: "char_mother",
+          speakerRoleType: "npc",
           speaker: "母亲",
           kind: "start",
           text: "你爸刚才又把答应的事忘了。你看，他根本就不在乎这个家。",
@@ -73,6 +94,8 @@ const SAMPLE_PROJECT = {
         {
           id: "n2",
           title: "精灵打断",
+          characterId: "char_spirit",
+          speakerRoleType: "spirit",
           speaker: "精灵",
           kind: "training",
           text: "等等，'他根本不在乎' 是能直接看到的事实，还是你们根据情绪做出的推断？",
@@ -85,6 +108,8 @@ const SAMPLE_PROJECT = {
         {
           id: "n3",
           title: "回到可验证信息",
+          characterId: "char_protagonist",
+          speakerRoleType: "protagonist",
           speaker: "主角",
           kind: "dialogue",
           text: "我先确认一下，今天具体发生了什么？是约好的买药忘了，还是别的事情？",
@@ -97,6 +122,8 @@ const SAMPLE_PROJECT = {
         {
           id: "n4",
           title: "第二次分辨",
+          characterId: "char_spirit",
+          speakerRoleType: "spirit",
           speaker: "精灵",
           kind: "reflection",
           text: "很好。'忘了买药' 是事实，'他不在乎' 是想法。下一步，你可以怎么表达自己，而不是替别人下结论？",
@@ -112,6 +139,8 @@ const SAMPLE_PROJECT = {
         {
           id: "n5",
           title: "关系缓和",
+          characterId: "char_protagonist",
+          speakerRoleType: "protagonist",
           speaker: "主角",
           kind: "ending",
           text: "今天忘了买药这件事让我很紧张，我需要的是先把药的问题解决，而不是继续猜彼此的态度。",
@@ -124,6 +153,8 @@ const SAMPLE_PROJECT = {
         {
           id: "n6",
           title: "冲突升级",
+          characterId: "char_mother",
+          speakerRoleType: "npc",
           speaker: "母亲",
           kind: "ending",
           text: "你看，连你也只会替他说话。算了，没人会真的理解我。",
@@ -142,16 +173,18 @@ const state = {
   backendOnline: false,
   projects: [],
   versions: [],
+  invites: [],
   project: loadLocalProject(),
   selectedChapterId: null,
   selectedNodeId: null,
+  selectedCharacterId: null,
   authToken: localStorage.getItem(AUTH_TOKEN_KEY) || "",
   currentUser: null,
   aiConfig: { kind: "openai", baseUrl: "", model: "", hasApiKey: false, apiKeyMasked: "", apiKeyInput: "", updatedAt: null, updatedBy: null },
   versionCompare: null,
   logicAudit: null,
   nodeAiResult: "",
-  activeGlobalTab: "setup",
+  activeGlobalTab: "prompt",
   activeEditorTab: "chapter-node",
   zoom: 1,
   exportMode: "project"
@@ -161,20 +194,21 @@ const els = {
   backendStatus: document.getElementById("backend-status"),
   authStatus: document.getElementById("auth-status"),
   authUserSummary: document.getElementById("auth-user-summary"),
-  authDisplayName: document.getElementById("auth-display-name"),
-  authUsername: document.getElementById("auth-username"),
-  authPassword: document.getElementById("auth-password"),
+  authUserName: document.getElementById("auth-user-name"),
+  loginLink: document.getElementById("login-link"),
+  invitePanel: document.getElementById("invite-panel"),
+  inviteList: document.getElementById("invite-list"),
   projectList: document.getElementById("project-list"),
   chapterList: document.getElementById("chapter-list"),
+  characterList: document.getElementById("character-list"),
   versionList: document.getElementById("version-list"),
   versionCompare: document.getElementById("version-compare"),
   projectTitle: document.getElementById("project-title"),
   projectGoal: document.getElementById("project-goal"),
-  worldNotes: document.getElementById("world-notes"),
-  heroName: document.getElementById("hero-name"),
-  heroRole: document.getElementById("hero-role"),
-  heroTraits: document.getElementById("hero-traits"),
-  heroGoal: document.getElementById("hero-goal"),
+  worldBook: document.getElementById("world-book"),
+  characterBook: document.getElementById("character-book"),
+  chapterBook: document.getElementById("chapter-book"),
+  plotBrief: document.getElementById("plot-brief"),
   presetSelect: document.getElementById("preset-select"),
   systemPrompt: document.getElementById("system-prompt"),
   generationBrief: document.getElementById("generation-brief"),
@@ -186,6 +220,8 @@ const els = {
   chapterNotes: document.getElementById("chapter-notes"),
   selectedNodeTitle: document.getElementById("selected-node-title"),
   nodeTitle: document.getElementById("node-title"),
+  nodeCharacterId: document.getElementById("node-character-id"),
+  nodeRoleType: document.getElementById("node-role-type"),
   nodeSpeaker: document.getElementById("node-speaker"),
   nodeKind: document.getElementById("node-kind"),
   nodeText: document.getElementById("node-text"),
@@ -224,6 +260,10 @@ const interaction = {
 bootstrap();
 
 async function bootstrap() {
+  if (!state.authToken) {
+    window.location.href = "/login";
+    return;
+  }
   populatePresetOptions();
   bindProjectFields();
   bindActions();
@@ -260,12 +300,23 @@ function saveLocalDraft() {
 
 function normalizeProject(project) {
   const metrics = Array.isArray(project.metrics) && project.metrics.length ? project.metrics : structuredClone(DEFAULT_METRICS);
+  const characters = normalizeCharacters(project);
+  const protagonist = getPrimaryCharacter(characters, "protagonist");
   return {
     id: project.id || `local_${Date.now().toString(36)}`,
     title: project.title || project.projectTitle || "未命名项目",
     projectGoal: project.projectGoal || "",
-    worldNotes: project.worldNotes || "",
-    protagonist: project.protagonist || { name: "", role: "", traits: "", goal: "" },
+    worldNotes: project.worldNotes || project.worldBook || "",
+    worldBook: project.worldBook || project.worldNotes || "",
+    characterBook: project.characterBook || "",
+    plotBrief: project.plotBrief || "",
+    characters,
+    protagonist: protagonist ? {
+      name: protagonist.name,
+      role: protagonist.narrativeRole,
+      traits: protagonist.traits,
+      goal: protagonist.goal
+    } : { name: "", role: "", traits: "", goal: "" },
     preset: project.preset || "cbt_training",
     systemPrompt: project.systemPrompt || PRESETS.cbt_training.systemPrompt,
     generationBrief: project.generationBrief || PRESETS.cbt_training.brief,
@@ -277,23 +328,79 @@ function normalizeProject(project) {
     },
     metrics,
     derivedFormulas: project.derivedFormulas || "",
-    chapters: Array.isArray(project.chapters) && project.chapters.length ? project.chapters.map(chapter => normalizeChapter(chapter, metrics)) : [makeChapter("第一章：新章节")],
+    chapters: Array.isArray(project.chapters) && project.chapters.length ? project.chapters.map(chapter => normalizeChapter(chapter, metrics, characters)) : [makeChapter("第一章：新章节", characters)],
     createdAt: project.createdAt || new Date().toISOString(),
     updatedAt: project.updatedAt || new Date().toISOString()
   };
 }
 
-function normalizeChapter(chapter, metrics = DEFAULT_METRICS) {
+function normalizeCharacters(project) {
+  const fromProject = Array.isArray(project.characters) && project.characters.length
+    ? project.characters
+    : buildCharactersFromLegacyProject(project);
+  const characters = fromProject.map((character, index) => normalizeCharacter(character, index));
+  const narrator = getPrimaryCharacter(characters, "narrator");
+  if (!narrator) characters.push(normalizeCharacter({ roleType: "narrator", name: "旁白" }, characters.length));
+  return characters;
+}
+
+function buildCharactersFromLegacyProject(project) {
+  const legacy = [];
+  if (project.protagonist?.name || project.protagonist?.role || project.protagonist?.traits || project.protagonist?.goal) {
+    legacy.push({
+      id: "char_protagonist",
+      name: project.protagonist?.name || "主角",
+      roleType: "protagonist",
+      narrativeRole: project.protagonist?.role || "",
+      traits: project.protagonist?.traits || "",
+      goal: project.protagonist?.goal || "",
+      context: ""
+    });
+  }
+  const seen = new Set(legacy.map(item => item.name));
+  (project.chapters || []).forEach(chapter => {
+    (chapter.nodes || []).forEach(node => {
+      const name = String(node.speaker || "").trim();
+      if (!name || seen.has(name)) return;
+      seen.add(name);
+      legacy.push({
+        id: `char_${slugify(name) || legacy.length + 1}`,
+        name,
+        roleType: inferRoleTypeFromSpeaker(name),
+        narrativeRole: "",
+        traits: "",
+        goal: "",
+        context: ""
+      });
+    });
+  });
+  return legacy.length ? legacy : [normalizeCharacter({ name: "主角", roleType: "protagonist" }, 0)];
+}
+
+function normalizeCharacter(character, index = 0) {
+  return {
+    id: character.id || `char_${Date.now().toString(36)}_${index + 1}`,
+    name: character.name || defaultCharacterName(character.roleType),
+    roleType: normalizeRoleType(character.roleType),
+    narrativeRole: character.narrativeRole || character.role || "",
+    traits: character.traits || "",
+    goal: character.goal || "",
+    context: character.context || character.notes || ""
+  };
+}
+
+function normalizeChapter(chapter, metrics = DEFAULT_METRICS, characters = currentProject?.()?.characters || []) {
   return {
     id: chapter.id || `ch_${Date.now().toString(36)}`,
     title: chapter.title || "未命名章节",
     slug: chapter.slug || slugify(chapter.title || "chapter"),
     notes: chapter.notes || "",
-    nodes: Array.isArray(chapter.nodes) && chapter.nodes.length ? chapter.nodes.map(node => normalizeNode(node, 0, metrics)) : [makeNode("n1", "开场", "旁白", "start")]
+    chapterBook: chapter.chapterBook || chapter.notes || "",
+    nodes: Array.isArray(chapter.nodes) && chapter.nodes.length ? chapter.nodes.map((node, index) => normalizeNode(node, index, metrics, characters)) : [makeNode("n1", "开场", "旁白", "start", characters)]
   };
 }
 
-function normalizeNode(node, index = 0, metrics = currentProject?.()?.metrics || DEFAULT_METRICS) {
+function normalizeNode(node, index = 0, metrics = currentProject?.()?.metrics || DEFAULT_METRICS, characters = currentProject?.()?.characters || []) {
   const nodeEffects = normalizeEffects(
     node.effects ??
     node.metric_effects ??
@@ -303,10 +410,16 @@ function normalizeNode(node, index = 0, metrics = currentProject?.()?.metrics ||
     node.notes,
     metrics
   );
+  const speakerRoleType = normalizeRoleType(node.speakerRoleType || node.speaker_role_type || inferRoleTypeFromSpeaker(node.speaker));
+  const matchedCharacter = findCharacterById(node.characterId || node.character_id, characters) || findCharacterByName(node.speaker, characters);
+  const characterId = matchedCharacter?.id || node.characterId || node.character_id || "";
+  const speaker = matchedCharacter?.name || node.speaker || defaultCharacterName(speakerRoleType);
   return {
     id: node.id || `n${index + 1}`,
     title: node.title || `节点 ${index + 1}`,
-    speaker: node.speaker || "旁白",
+    characterId,
+    speakerRoleType,
+    speaker,
     kind: ["start", "dialogue", "training", "reflection", "ending"].includes(node.kind || node.type) ? (node.kind || node.type) : "dialogue",
     text: node.text || "",
     tags: Array.isArray(node.tags) ? node.tags : splitTags(node.tags || ""),
@@ -332,15 +445,19 @@ function normalizeNode(node, index = 0, metrics = currentProject?.()?.metrics ||
   };
 }
 
-function makeChapter(title) {
-  return normalizeChapter({ title, nodes: [makeNode("n1", "开场", "旁白", "start")] });
+function makeChapter(title, characters = currentProject?.()?.characters || []) {
+  return normalizeChapter({ title, nodes: [makeNode("n1", "开场", "旁白", "start", characters)] }, currentProject?.()?.metrics || DEFAULT_METRICS, characters);
 }
 
-function makeNode(id, title, speaker, kind) {
+function makeNode(id, title, speaker, kind, characters = currentProject?.()?.characters || []) {
+  const matchedCharacter = findCharacterByName(speaker, characters) || getPrimaryCharacter(characters, "protagonist") || getPrimaryCharacter(characters, "narrator");
+  const roleType = matchedCharacter?.roleType || inferRoleTypeFromSpeaker(speaker);
   return {
     id,
+    characterId: matchedCharacter?.id || "",
+    speakerRoleType: roleType,
     title,
-    speaker,
+    speaker: matchedCharacter?.name || speaker,
     kind,
     text: "输入新节点文案",
     tags: ["draft"],
@@ -358,6 +475,9 @@ function ensureSelection() {
   state.selectedNodeId = state.selectedNodeId && currentChapter()?.nodes.some(node => node.id === state.selectedNodeId)
     ? state.selectedNodeId
     : currentChapter()?.nodes[0]?.id ?? null;
+  state.selectedCharacterId = state.selectedCharacterId && currentProject().characters.some(character => character.id === state.selectedCharacterId)
+    ? state.selectedCharacterId
+    : currentProject().characters[0]?.id ?? null;
 }
 
 function currentProject() {
@@ -370,6 +490,75 @@ function currentChapter() {
 
 function currentNode() {
   return currentChapter()?.nodes.find(node => node.id === state.selectedNodeId) ?? null;
+}
+
+function currentCharacter() {
+  return currentProject().characters.find(character => character.id === state.selectedCharacterId) ?? null;
+}
+
+function normalizeRoleType(value) {
+  return Object.keys(ROLE_TYPES).includes(value) ? value : inferRoleTypeFromSpeaker(value);
+}
+
+function inferRoleTypeFromSpeaker(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "npc";
+  if (/(主角|protagonist)/.test(raw)) return "protagonist";
+  if (/(旁白|narrat)/.test(raw)) return "narrator";
+  if (/(精灵|spirit|guide|fairy)/.test(raw)) return "spirit";
+  if (/(人格面具|面具|内心|mask)/.test(raw)) return "mask";
+  return "npc";
+}
+
+function defaultCharacterName(roleType) {
+  return {
+    protagonist: "主角",
+    npc: "新角色",
+    narrator: "旁白",
+    spirit: "精灵",
+    mask: "人格面具"
+  }[normalizeRoleType(roleType)] || "新角色";
+}
+
+function getPrimaryCharacter(characters, roleType) {
+  return (characters || []).find(character => character.roleType === roleType) ?? null;
+}
+
+function findCharacterById(id, characters = currentProject()?.characters || []) {
+  return (characters || []).find(character => character.id === id) ?? null;
+}
+
+function findCharacterByName(name, characters = currentProject()?.characters || []) {
+  const normalized = String(name || "").trim();
+  if (!normalized) return null;
+  return (characters || []).find(character => character.name === normalized) ?? null;
+}
+
+function roleTypeLabel(roleType) {
+  return ROLE_TYPES[normalizeRoleType(roleType)] || ROLE_TYPES.npc;
+}
+
+function syncLegacyProtagonist() {
+  const protagonist = getPrimaryCharacter(currentProject().characters, "protagonist");
+  currentProject().protagonist = protagonist ? {
+    name: protagonist.name,
+    role: protagonist.narrativeRole,
+    traits: protagonist.traits,
+    goal: protagonist.goal
+  } : { name: "", role: "", traits: "", goal: "" };
+}
+
+function syncNodeSpeakersFromCharacter(characterId) {
+  const character = findCharacterById(characterId);
+  if (!character) return;
+  currentProject().chapters.forEach(chapter => {
+    chapter.nodes.forEach(node => {
+      if (node.characterId === characterId) {
+        node.speaker = character.name;
+        node.speakerRoleType = character.roleType;
+      }
+    });
+  });
 }
 
 function populatePresetOptions() {
@@ -386,11 +575,9 @@ function bindProjectFields() {
   const bindings = [
     [els.projectTitle, value => currentProject().title = value],
     [els.projectGoal, value => currentProject().projectGoal = value],
-    [els.worldNotes, value => currentProject().worldNotes = value],
-    [els.heroName, value => currentProject().protagonist.name = value],
-    [els.heroRole, value => currentProject().protagonist.role = value],
-    [els.heroTraits, value => currentProject().protagonist.traits = value],
-    [els.heroGoal, value => currentProject().protagonist.goal = value],
+    [els.worldBook, value => currentProject().worldBook = value],
+    [els.characterBook, value => currentProject().characterBook = value],
+    [els.plotBrief, value => currentProject().plotBrief = value],
     [els.systemPrompt, value => currentProject().systemPrompt = value],
     [els.generationBrief, value => currentProject().generationBrief = value],
     [els.providerKind, value => state.aiConfig.kind = value],
@@ -399,7 +586,8 @@ function bindProjectFields() {
     [els.modelName, value => state.aiConfig.model = value],
     [els.derivedFormulas, value => currentProject().derivedFormulas = value],
     [els.chapterTitle, value => { const chapter = currentChapter(); if (chapter) { chapter.title = value; chapter.slug = slugify(value); } }],
-    [els.chapterNotes, value => { const chapter = currentChapter(); if (chapter) chapter.notes = value; }]
+    [els.chapterNotes, value => { const chapter = currentChapter(); if (chapter) chapter.notes = value; }],
+    [els.chapterBook, value => { const chapter = currentChapter(); if (chapter) chapter.chapterBook = value; }]
   ];
 
   bindings.forEach(([element, setter]) => {
@@ -418,13 +606,10 @@ function bindProjectFields() {
 }
 
 function bindActions() {
-  document.getElementById("login-btn").addEventListener("click", loginUser);
-  document.getElementById("register-btn").addEventListener("click", registerUser);
   document.getElementById("logout-btn").addEventListener("click", logoutUser);
   document.getElementById("load-sample-btn").addEventListener("click", () => {
     state.project = normalizeProject(structuredClone(SAMPLE_PROJECT));
-    state.selectedChapterId = state.project.chapters[0].id;
-    state.selectedNodeId = state.project.chapters[0].nodes[0].id;
+    ensureSelection();
     persistDraftAndRender();
   });
   document.getElementById("save-local-btn").addEventListener("click", () => {
@@ -433,19 +618,24 @@ function bindActions() {
   });
   document.getElementById("refresh-projects-btn").addEventListener("click", syncBackendState);
   document.getElementById("refresh-versions-btn").addEventListener("click", loadVersions);
+  document.getElementById("refresh-invites-btn").addEventListener("click", loadInvites);
+  document.getElementById("generate-invite-btn").addEventListener("click", generateInviteCodeFromAdmin);
   document.getElementById("new-project-btn").addEventListener("click", createProjectOnServer);
   document.getElementById("save-server-btn").addEventListener("click", saveProjectToServer);
   document.getElementById("create-version-btn").addEventListener("click", createVersionOnServer);
   document.getElementById("new-chapter-btn").addEventListener("click", () => {
     const title = `第${currentProject().chapters.length + 1}章：新章节`;
-    const chapter = makeChapter(title);
+    const chapter = makeChapter(title, currentProject().characters);
     currentProject().chapters.push(chapter);
     state.selectedChapterId = chapter.id;
     state.selectedNodeId = chapter.nodes[0].id;
     persistDraftAndRender();
   });
-  document.getElementById("apply-protagonist-btn").addEventListener("click", () => {
-    currentProject().systemPrompt = `${PRESETS[currentProject().preset]?.systemPrompt ?? ""}\n主角设定：${protagonistSummary()}`;
+  document.getElementById("new-character-btn").addEventListener("click", () => {
+    const roleType = currentProject().characters.some(character => character.roleType === "protagonist") ? "npc" : "protagonist";
+    const character = normalizeCharacter({ roleType, name: defaultCharacterName(roleType) }, currentProject().characters.length);
+    currentProject().characters.push(character);
+    state.selectedCharacterId = character.id;
     persistDraftAndRender();
   });
   document.getElementById("reset-system-prompt-btn").addEventListener("click", () => {
@@ -457,7 +647,7 @@ function bindActions() {
     persistDraftAndRender();
   });
   document.getElementById("export-json-btn").addEventListener("click", () => {
-    downloadFile(`${slugify(currentProject().title)}.json`, JSON.stringify(exportProjectData(), null, 2), "application/json");
+    downloadFile(`${slugify(currentProject().title)}.json`, JSON.stringify(exportProjectArtifact(), null, 2), "application/json");
   });
   document.getElementById("export-markdown-btn").addEventListener("click", () => {
     downloadFile(`${slugify(currentProject().title)}.md`, exportMarkdown(), "text/markdown");
@@ -503,13 +693,11 @@ function bindActions() {
   document.getElementById("zoom-in-btn").addEventListener("click", () => adjustZoom(0.1));
   document.getElementById("zoom-out-btn").addEventListener("click", () => adjustZoom(-0.1));
   document.getElementById("zoom-reset-btn").addEventListener("click", () => { state.zoom = 1; renderGraph(); });
-  document.querySelectorAll(".speaker-preset-btn").forEach(button => {
-    button.addEventListener("click", () => applySpeakerPreset(button.dataset.speaker));
-  });
   bindCanvasInteractions();
 }
 
 function persistDraftAndRender() {
+  syncLegacyProtagonist();
   currentProject().updatedAt = new Date().toISOString();
   ensureSelection();
   saveLocalDraft();
@@ -521,8 +709,10 @@ function renderAll() {
   renderAuthState();
   renderProjectFields();
   renderTabs();
+  renderInvitePanel();
   renderProjectList();
   renderChapterList();
+  renderCharacterList();
   renderVersionList();
   renderMetrics();
   renderGraph();
@@ -563,25 +753,20 @@ function renderAuthState() {
   els.authStatus.textContent = user ? `${user.role === "admin" ? "管理员" : "已登录"}` : "未登录";
   els.authStatus.style.background = user ? "rgba(88,113,100,.15)" : "rgba(143,45,34,.12)";
   els.authStatus.style.color = user ? "#587164" : "#8f2d22";
+  els.authUserName.textContent = user ? `${user.displayName} (@${user.username})` : "未登录";
   els.authUserSummary.textContent = user
-    ? `${user.displayName} (@${user.username}) 正在协作。${user.role === "admin" ? "你可以维护全局 AI 接口配置。" : "你可以编辑项目并参与版本协作。"}`
-    : "游客模式。登录后可读取项目库并参与协作。";
-  els.authDisplayName.disabled = Boolean(user);
-  els.authUsername.disabled = Boolean(user);
-  els.authPassword.disabled = Boolean(user);
-  document.getElementById("login-btn").disabled = Boolean(user);
-  document.getElementById("register-btn").disabled = Boolean(user);
+    ? `${user.role === "admin" ? "管理员可维护 AI 配置、生成邀请码与协作项目。" : "当前可编辑项目、版本和分支节点。"}`
+    : "登录后可进入协作空间。";
+  els.loginLink.hidden = Boolean(user);
   document.getElementById("logout-btn").disabled = !user;
 }
 
 function renderProjectFields() {
   els.projectTitle.value = currentProject().title;
   els.projectGoal.value = currentProject().projectGoal;
-  els.worldNotes.value = currentProject().worldNotes;
-  els.heroName.value = currentProject().protagonist.name;
-  els.heroRole.value = currentProject().protagonist.role;
-  els.heroTraits.value = currentProject().protagonist.traits;
-  els.heroGoal.value = currentProject().protagonist.goal;
+  els.worldBook.value = currentProject().worldBook || "";
+  els.characterBook.value = currentProject().characterBook || "";
+  els.plotBrief.value = currentProject().plotBrief || "";
   els.presetSelect.value = currentProject().preset;
   els.systemPrompt.value = currentProject().systemPrompt;
   els.generationBrief.value = currentProject().generationBrief;
@@ -595,11 +780,36 @@ function renderProjectFields() {
   els.derivedFormulas.value = currentProject().derivedFormulas;
   els.chapterTitle.value = currentChapter()?.title ?? "";
   els.chapterNotes.value = currentChapter()?.notes ?? "";
+  els.chapterBook.value = currentChapter()?.chapterBook ?? "";
   const adminEditable = state.currentUser?.role === "admin";
   [els.providerKind, els.apiBaseUrl, els.apiKey, els.modelName].forEach(input => input.disabled = !adminEditable);
   els.aiAdminNote.textContent = adminEditable
     ? "管理员可在这里维护 AI 接口格式、Base URL、模型和密钥。保存后所有协作者共用。"
     : "AI 接口配置由管理员统一维护。普通用户可直接使用已配置模型发起生成。";
+}
+
+function renderInvitePanel() {
+  const isAdmin = state.currentUser?.role === "admin";
+  els.invitePanel.hidden = !isAdmin;
+  if (!isAdmin) return;
+  els.inviteList.innerHTML = "";
+  if (!state.invites.length) {
+    els.inviteList.innerHTML = `<div class="tip">暂无邀请码。生成后可发给新用户注册。</div>`;
+    return;
+  }
+  state.invites.slice(0, 8).forEach(invite => {
+    const item = document.createElement("article");
+    item.className = "choice-item";
+    item.innerHTML = `
+      <strong>${escapeHtml(invite.code)}</strong>
+      <p>${invite.usedAt ? "已使用" : "未使用"} · 创建于 ${formatDate(invite.createdAt)}</p>
+      <p>${invite.usedBy && invite.usedBy !== "pending" ? `使用者：${escapeHtml(invite.usedBy)}` : "可直接复制给新用户"}</p>`;
+    item.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(invite.code);
+      flashStatus(`邀请码 ${invite.code} 已复制`);
+    });
+    els.inviteList.append(item);
+  });
 }
 
 function renderProjectList() {
@@ -645,6 +855,78 @@ function renderChapterList() {
       renderAll();
     });
     els.chapterList.append(article);
+  });
+}
+
+function renderCharacterList() {
+  els.characterList.innerHTML = "";
+  currentProject().characters.forEach(character => {
+    const article = document.createElement("article");
+    article.className = `character-card${character.id === state.selectedCharacterId ? " is-active" : ""}`;
+    article.innerHTML = `
+      <div class="character-card-header">
+        <strong>${escapeHtml(character.name || "未命名角色")}</strong>
+        <span class="character-chip">${escapeHtml(roleTypeLabel(character.roleType))}</span>
+      </div>
+      <div class="character-grid">
+        <label>角色名<input data-field="name" value="${escapeHtml(character.name)}"></label>
+        <label>角色类型
+          <select data-field="roleType">
+            ${Object.entries(ROLE_TYPES).map(([value, label]) => `<option value="${value}" ${character.roleType === value ? "selected" : ""}>${label}</option>`).join("")}
+          </select>
+        </label>
+        <label>叙事定位<input data-field="narrativeRole" value="${escapeHtml(character.narrativeRole)}"></label>
+        <label>目标<input data-field="goal" value="${escapeHtml(character.goal)}"></label>
+        <label class="span-2">特质<textarea data-field="traits" rows="2">${escapeHtml(character.traits)}</textarea></label>
+        <label class="span-2">上下文 / 限制<textarea data-field="context" rows="2">${escapeHtml(character.context)}</textarea></label>
+      </div>
+      <div class="button-row compact">
+        <button class="ghost character-focus" type="button">用于当前节点</button>
+        <button class="ghost character-delete" type="button">删除角色卡</button>
+      </div>`;
+    article.addEventListener("click", () => {
+      state.selectedCharacterId = character.id;
+      renderCharacterList();
+    });
+    article.querySelectorAll("[data-field]").forEach(input => {
+      input.addEventListener("input", event => {
+        const field = event.target.dataset.field;
+        character[field] = field === "roleType" ? normalizeRoleType(event.target.value) : event.target.value;
+        syncLegacyProtagonist();
+        syncNodeSpeakersFromCharacter(character.id);
+        persistDraftAndRender();
+      });
+    });
+    article.querySelector(".character-focus").addEventListener("click", event => {
+      event.stopPropagation();
+      state.selectedCharacterId = character.id;
+      const node = currentNode();
+      if (node) {
+        node.characterId = character.id;
+        node.speakerRoleType = character.roleType;
+        node.speaker = character.name;
+      }
+      persistDraftAndRender();
+    });
+    article.querySelector(".character-delete").addEventListener("click", event => {
+      event.stopPropagation();
+      if (currentProject().characters.length <= 1) {
+        flashStatus("至少保留一张角色卡", true);
+        return;
+      }
+      currentProject().characters = currentProject().characters.filter(item => item.id !== character.id);
+      currentProject().chapters.forEach(chapter => {
+        chapter.nodes.forEach(node => {
+          if (node.characterId === character.id) {
+            node.characterId = "";
+          }
+        });
+      });
+      syncLegacyProtagonist();
+      ensureSelection();
+      persistDraftAndRender();
+    });
+    els.characterList.append(article);
   });
 }
 
@@ -757,7 +1039,7 @@ function renderGraph() {
     button.style.top = `${node.position?.y ?? 0}px`;
     button.querySelector(".node-kind-badge").textContent = kindLabel(node.kind);
     button.querySelector(".node-name").textContent = node.title;
-    button.querySelector(".node-speaker").textContent = node.speaker || "未命名说话者";
+    button.querySelector(".node-speaker").textContent = `${node.speaker || "未命名说话者"} · ${roleTypeLabel(node.speakerRoleType)}`;
     button.querySelector(".node-excerpt").textContent = truncate(node.text, 84);
     button.querySelector(".node-choice-count").textContent = `${node.choices.length} 条选项`;
     button.querySelector(".node-tags").textContent = (node.tags ?? []).slice(0, 3).join(" · ");
@@ -848,18 +1130,40 @@ function renderNodeEditor() {
   els.selectedNodeTitle.textContent = node ? `${currentChapter()?.title ?? ""} / ${node.title}` : "未选择节点";
   if (!node) {
     [els.nodeTitle, els.nodeSpeaker, els.nodeText, els.nodeTags, els.nodeNotes].forEach(input => input.value = "");
+    els.nodeCharacterId.innerHTML = "";
     els.choiceList.innerHTML = "";
     els.nodeEffects.innerHTML = "";
     return;
   }
 
+  els.nodeCharacterId.innerHTML = `<option value="">不绑定角色卡</option>`;
+  currentProject().characters.forEach(character => {
+    const option = document.createElement("option");
+    option.value = character.id;
+    option.textContent = `${character.name} · ${roleTypeLabel(character.roleType)}`;
+    if (character.id === node.characterId) option.selected = true;
+    els.nodeCharacterId.append(option);
+  });
   els.nodeTitle.value = node.title;
+  els.nodeCharacterId.value = node.characterId || "";
+  els.nodeRoleType.value = normalizeRoleType(node.speakerRoleType);
   els.nodeSpeaker.value = node.speaker;
   els.nodeKind.value = node.kind;
   els.nodeText.value = node.text;
   els.nodeTags.value = node.tags.join(", ");
   els.nodeNotes.value = node.notes;
   bindNodeField(els.nodeTitle, value => node.title = value);
+  bindNodeField(els.nodeCharacterId, value => {
+    node.characterId = value;
+    const character = findCharacterById(value);
+    if (character) {
+      node.speaker = character.name;
+      node.speakerRoleType = character.roleType;
+      els.nodeSpeaker.value = character.name;
+      els.nodeRoleType.value = character.roleType;
+    }
+  }, "change");
+  bindNodeField(els.nodeRoleType, value => node.speakerRoleType = normalizeRoleType(value), "change");
   bindNodeField(els.nodeSpeaker, value => node.speaker = value);
   bindNodeField(els.nodeKind, value => node.kind = value);
   bindNodeField(els.nodeText, value => node.text = value);
@@ -881,8 +1185,8 @@ function renderNodeEditor() {
   renderChoiceEditor(node);
 }
 
-function bindNodeField(element, setter) {
-  element.oninput = event => {
+function bindNodeField(element, setter, eventName = "input") {
+  element[`on${eventName}`] = event => {
     if (!currentNode()) return;
     setter(event.target.value);
     persistDraftAndRender();
@@ -1014,7 +1318,7 @@ function renderAiPanels() {
       <strong>${escapeHtml(state.logicAudit.summary)}</strong>
       <div class="ai-issue-list">${issues || "<p>没有发现明显冲突。</p>"}</div>`;
   } else {
-    els.logicAuditResult.textContent = "AI 会在这里给出全局设定、人物语言、世界规则的一致性检查结果。";
+    els.logicAuditResult.textContent = "AI 会在这里检查：系统提示词层次是否完整、五类角色说话方式是否越界、主分支是否由主角做决定。";
   }
 
   els.nodeAiResult.textContent = state.nodeAiResult || "这里会显示当前节点生成、改写和后续节点调整的摘要。";
@@ -1049,8 +1353,92 @@ async function loadCurrentUser() {
     state.currentUser = result.user;
   } catch {
     clearAuthState();
+    window.location.href = "/login";
     throw new Error("登录状态已失效，请重新登录");
   }
+}
+
+function rolePromptRules() {
+  return [
+    "角色规则：",
+    "1. protagonist（主角）只能说主角会说的话，主分支选择必须由主角节点承担；如果节点存在多个玩家可选项，该节点必须是 protagonist。",
+    "2. npc 必须表现为对话对象，说话前后要有明显对话承接感，不能像旁白或系统说明。",
+    "3. spirit 只能在玩家触发按键、或达到判定标准后出现，承担引导与提醒功能，但不能替玩家做决定，也不能直接改写外部对话走向。",
+    "4. narrator 不能有对话感，只负责简洁说明背景、动作、环境和可观察信息。",
+    "5. mask 通常与 spirit 同场出现，走主角内心对话线，表达自动想法、恐惧或自我辩护，不直接代替外部角色发言。"
+  ].join("\n");
+}
+
+function enforceNarrativeRules(node) {
+  const protagonist = getPrimaryCharacter(currentProject().characters, "protagonist");
+  const matchedCharacter = findCharacterById(node.characterId) || findCharacterByName(node.speaker);
+  const roleType = normalizeRoleType(node.speakerRoleType || matchedCharacter?.roleType);
+  const next = structuredClone(node);
+
+  next.speakerRoleType = roleType;
+
+  if (matchedCharacter) {
+    next.characterId = matchedCharacter.id;
+    next.speaker = matchedCharacter.name;
+  }
+
+  if (next.choices?.length > 1 && roleType !== "protagonist") {
+    next.speakerRoleType = "protagonist";
+    next.characterId = protagonist?.id || next.characterId || "";
+    next.speaker = protagonist?.name || "主角";
+    next.notes = `${next.notes || ""}\n规则修正：多选主分支已强制归到主角节点。`.trim();
+  }
+
+  if (next.speakerRoleType === "spirit" && !["training", "reflection"].includes(next.kind)) {
+    next.kind = "training";
+  }
+
+  if (next.speakerRoleType === "narrator") {
+    next.characterId = getPrimaryCharacter(currentProject().characters, "narrator")?.id || next.characterId || "";
+    next.speaker = getPrimaryCharacter(currentProject().characters, "narrator")?.name || next.speaker || "旁白";
+  }
+
+  if (next.speakerRoleType === "protagonist") {
+    next.characterId = protagonist?.id || next.characterId || "";
+    next.speaker = protagonist?.name || next.speaker || "主角";
+  }
+
+  return next;
+}
+
+function validateNarrativeRuleIssues(nodes = currentChapter()?.nodes || []) {
+  const issues = [];
+  nodes.forEach(node => {
+    const roleType = normalizeRoleType(node.speakerRoleType);
+    if (node.choices.length > 1 && roleType !== "protagonist") {
+      issues.push({
+        scope: node.title,
+        severity: "high",
+        title: "主分支不在主角节点",
+        detail: "存在多选主分支，但当前节点不是主角类型。",
+        suggestion: "把该节点改成主角节点，或把它改成自动过渡节点。"
+      });
+    }
+    if (roleType === "spirit" && !["training", "reflection"].includes(node.kind)) {
+      issues.push({
+        scope: node.title,
+        severity: "medium",
+        title: "精灵节点类型不合适",
+        detail: "精灵节点应主要用于训练/反思触发，而不是常规对话推进。",
+        suggestion: "改为 training 或 reflection，并让它只承担提醒。"
+      });
+    }
+    if (roleType === "narrator" && /[“”"'？?！!]/.test(node.text)) {
+      issues.push({
+        scope: node.title,
+        severity: "medium",
+        title: "旁白出现对话感",
+        detail: "旁白文本里出现了明显对话或情绪化表达痕迹。",
+        suggestion: "收回到背景、动作、环境和可观察信息。"
+      });
+    }
+  });
+  return issues;
 }
 
 async function loadAiConfig() {
@@ -1094,45 +1482,11 @@ async function saveAiConfigIfAdmin() {
 }
 
 async function loginUser() {
-  try {
-    const username = els.authUsername.value.trim();
-    const password = els.authPassword.value.trim();
-    if (!username || !password) {
-      flashStatus("请输入用户名和密码", true);
-      return;
-    }
-    const result = await apiFetch("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ username, password })
-    });
-    state.authToken = result.token;
-    localStorage.setItem(AUTH_TOKEN_KEY, result.token);
-    state.currentUser = result.user;
-    els.authPassword.value = "";
-    await syncBackendState();
-    flashStatus(`已登录为 ${result.user.displayName}`);
-  } catch (error) {
-    flashStatus(`登录失败：${error.message}`, true);
-  }
+  window.location.href = "/login";
 }
 
 async function registerUser() {
-  try {
-    const displayName = els.authDisplayName.value.trim();
-    const username = els.authUsername.value.trim();
-    const password = els.authPassword.value.trim();
-    if (!displayName || !username || !password) {
-      flashStatus("显示名、用户名和密码都需要填写", true);
-      return;
-    }
-    await apiFetch("/auth/register", {
-      method: "POST",
-      body: JSON.stringify({ displayName, username, password })
-    });
-    await loginUser();
-  } catch (error) {
-    flashStatus(`注册失败：${error.message}`, true);
-  }
+  window.location.href = "/login";
 }
 
 async function logoutUser() {
@@ -1144,8 +1498,7 @@ async function logoutUser() {
     // Ignore server logout failures and clear client state anyway.
   }
   clearAuthState();
-  await syncBackendState();
-  flashStatus("已退出登录");
+  window.location.href = "/login";
 }
 
 function clearAuthState() {
@@ -1153,6 +1506,7 @@ function clearAuthState() {
   state.currentUser = null;
   state.projects = [];
   state.versions = [];
+  state.invites = [];
   state.versionCompare = null;
   state.aiConfig = { kind: "openai", baseUrl: "", model: "", hasApiKey: false, apiKeyMasked: "", apiKeyInput: "", updatedAt: null, updatedBy: null };
   localStorage.removeItem(AUTH_TOKEN_KEY);
@@ -1195,12 +1549,14 @@ async function syncBackendState() {
       }
       if (state.currentUser) {
         await loadAiConfig();
+        await loadInvites();
         const projects = await apiFetch("/projects");
         state.projects = projects.projects;
         await loadVersions();
       } else {
         state.projects = [];
         state.versions = [];
+        state.invites = [];
         state.versionCompare = null;
         state.aiConfig = { kind: "openai", baseUrl: "", model: "", hasApiKey: false, apiKeyMasked: "", apiKeyInput: "", updatedAt: null, updatedBy: null };
       }
@@ -1208,6 +1564,7 @@ async function syncBackendState() {
       state.currentUser = null;
       state.projects = [];
       state.versions = [];
+      state.invites = [];
       state.versionCompare = null;
       state.aiConfig = { kind: "openai", baseUrl: "", model: "", hasApiKey: false, apiKeyMasked: "", apiKeyInput: "", updatedAt: null, updatedBy: null };
     }
@@ -1216,6 +1573,7 @@ async function syncBackendState() {
     state.currentUser = null;
     state.projects = [];
     state.versions = [];
+    state.invites = [];
     state.versionCompare = null;
   }
   renderAll();
@@ -1408,9 +1766,9 @@ async function requestGraphFromModel() {
   if (!canUseAiProxy()) return fallbackGenerateGraph();
   try {
     const prompt =
-      `${buildAiContextBlock()}\n章节任务：${currentProject().generationBrief}\n` +
-      "要求：1. 所有节点的说话者必须明确区分为“旁白”“精灵”“人物名”。2. 精灵负责提示和纠偏，语气克制。3. 人物台词必须符合性格与场景。4. 旁白只做场景或动作信息，不替人物表达心理结论。\n" +
-      "输出 JSON：{\"nodes\":[{id,title,speaker,kind,text,tags,notes,effects,choices:[{id,label,targetId,intent,note,effects}]}]}。";
+      `${buildAiContextBlock()}\n情节描述：${currentProject().plotBrief || "无"}\n节点及后续描述：${currentProject().generationBrief || "无"}\n${rolePromptRules()}\n` +
+      "要求：1. 所有节点都必须输出 speaker_role_type，可选 protagonist、npc、narrator、spirit、mask。2. 有明确角色卡时尽量输出 character_id。3. 主分支节点必须由 protagonist 承担；非主角节点如需跳转，只能做单出口过渡。4. spirit 出现必须像玩家触发后的提醒，不直接改写外部对话。5. narrator 只写背景、动作、状态，不带对话感。6. mask 用于内心对话线，通常与 spirit 相邻或呼应。\n" +
+      "输出 JSON：{\"nodes\":[{id,title,character_id,speaker_role_type,speaker,kind,text,tags,notes,effects,choices:[{id,label,targetId,intent,note,effects}]}]}。";
     const data = await requestAiJson("/ai/generate-graph", currentProject().systemPrompt, prompt, 0.8);
     return normalizeGraphPayload(extractJson(extractAiText(data)));
   } catch {
@@ -1422,9 +1780,9 @@ async function requestNodeRefineFromModel(node, instruction) {
   if (!canUseAiProxy()) return fallbackRefineNode(node, instruction);
   try {
     const prompt =
-      `${buildAiContextBlock()}\n当前节点：${JSON.stringify(node)}\n` +
+      `${buildAiContextBlock()}\n${rolePromptRules()}\n当前节点：${JSON.stringify(node)}\n` +
       `调整要求：${instruction || "让节点更自然，同时保留训练目标。"}\n` +
-      "要求：保持当前节点说话者类别清晰区分为旁白、精灵或人物；如果是人物，语气必须与其性格一致。\n输出 JSON：{title,speaker,kind,text,tags,notes,effects,choices}";
+      "要求：保持当前节点的 speaker_role_type 清晰有效；如果绑定了角色卡，speaker 应与角色卡一致；主分支选择不能从非主角节点发起。\n输出 JSON：{title,character_id,speaker_role_type,speaker,kind,text,tags,notes,effects,choices}";
     const data = await requestAiJson("/ai/refine-node", currentProject().systemPrompt, prompt, 0.7);
     return normalizeNodePayload(extractJson(extractAiText(data)));
   } catch {
@@ -1436,7 +1794,7 @@ async function requestLogicAuditFromModel(instruction) {
   if (!canUseAiProxy()) return fallbackLogicAudit(instruction);
   try {
     const prompt =
-      `${buildAiContextBlock()}\n章节摘要：${summarizeCurrentChapterForAi()}\n` +
+      `${buildAiContextBlock()}\n${rolePromptRules()}\n章节摘要：${summarizeCurrentChapterForAi()}\n` +
       `审查重点：${instruction || "检查人物语言是否和性格冲突，是否违背世界规则，是否偏离游戏整体设定。"}\n` +
       "输出 JSON：{summary,issues:[{scope,severity,title,detail,suggestion}]}。";
     const data = await requestAiJson("/ai/generate-graph", currentProject().systemPrompt, prompt, 0.4);
@@ -1450,8 +1808,10 @@ async function requestNodeGenerateFromModel(node, instruction) {
   if (!canUseAiProxy()) return fallbackGenerateNode(node, instruction);
   try {
     const prompt =
-      `${buildAiContextBlock()}\n当前节点骨架：${JSON.stringify({
+      `${buildAiContextBlock()}\n${rolePromptRules()}\n当前节点骨架：${JSON.stringify({
         id: node.id,
+        character_id: node.characterId,
+        speaker_role_type: node.speakerRoleType,
         title: node.title,
         speaker: node.speaker,
         kind: node.kind,
@@ -1460,8 +1820,8 @@ async function requestNodeGenerateFromModel(node, instruction) {
         effects: node.effects,
         choices: node.choices
       })}\n` +
-      `节点要求：${instruction || "基于当前节点位置生成一段完整、自然、可落地的节点台词。"}\n` +
-      "要求：如果说话者是“旁白”，只写动作/环境/状态；如果是“精灵”，要有引导和纠偏但不过度说教；如果是“人物”或人物名，要贴合角色性格。输出 JSON：{title,speaker,kind,text,tags,notes,effects,choices}";
+      `情节描述：${currentProject().plotBrief || "无"}\n节点及后续描述：${instruction || "无"}\n` +
+      "要求：如果 speaker_role_type 是 narrator，只写动作/环境/状态；如果是 spirit，要像玩家触发后的引导提示，不直接替玩家说话；如果是 protagonist、npc 或 mask，要贴合角色卡。输出 JSON：{title,character_id,speaker_role_type,speaker,kind,text,tags,notes,effects,choices}";
     const data = await requestAiJson("/ai/refine-node", currentProject().systemPrompt, prompt, 0.75);
     return normalizeNodePayload(extractJson(extractAiText(data)));
   } catch {
@@ -1472,6 +1832,8 @@ async function requestNodeGenerateFromModel(node, instruction) {
 async function requestRewriteFollowingFromModel(node, instruction) {
   const downstream = collectDownstreamNodes(node.id).map(item => ({
     id: item.id,
+    character_id: item.characterId,
+    speaker_role_type: item.speakerRoleType,
     title: item.title,
     speaker: item.speaker,
     kind: item.kind,
@@ -1485,9 +1847,9 @@ async function requestRewriteFollowingFromModel(node, instruction) {
   if (!canUseAiProxy()) return fallbackRewriteFollowing(downstream, instruction);
   try {
     const prompt =
-      `${buildAiContextBlock()}\n触发节点：${JSON.stringify(node)}\n待联动改写节点：${JSON.stringify(downstream)}\n` +
+      `${buildAiContextBlock()}\n${rolePromptRules()}\n触发节点：${JSON.stringify(node)}\n待联动改写节点：${JSON.stringify(downstream)}\n` +
       `联动改写要求：${instruction || "根据当前节点的新方向，联动收敛后续相关对话。"}\n` +
-      "要求：保持节点 id 不变；按原路径语义改写；明确区分旁白、精灵、人物；不要删除 choices。输出 JSON：{nodes:[{id,title,speaker,kind,text,tags,notes,effects,choices}]}";
+      "要求：保持节点 id 不变；按原路径语义改写；明确输出 speaker_role_type；不要删除 choices。输出 JSON：{nodes:[{id,title,character_id,speaker_role_type,speaker,kind,text,tags,notes,effects,choices}]}";
     const data = await requestAiJson("/ai/generate-graph", currentProject().systemPrompt, prompt, 0.72);
     const payload = extractJson(extractAiText(data));
     return (payload.nodes || []).map(item => normalizeNodePayload(item));
@@ -1508,31 +1870,31 @@ function extractAiText(data) {
 }
 
 function fallbackGenerateGraph() {
-  const hero = currentProject().protagonist.name || "主角";
+  const hero = getPrimaryCharacter(currentProject().characters, "protagonist")?.name || "主角";
   return normalizeGraphPayload({
     nodes: [
-      { id: "n1", title: "触发场景", speaker: "NPC", kind: "start", text: `${hero}刚进入冲突现场，空气明显紧绷，第一句话带着判断和情绪。`, tags: ["draft", "conflict"], notes: "开场抛出问题。", effects: { stress: 6 }, choices: [
+      { id: "n1", title: "触发场景", speaker: "NPC", speakerRoleType: "npc", kind: "start", text: `${hero}刚进入冲突现场，空气明显紧绷，第一句话带着判断和情绪。`, tags: ["draft", "conflict"], notes: "开场抛出问题。", effects: { stress: 6 }, choices: [
         { id: "c1", label: "先求证具体发生了什么", targetId: "n2", intent: "求证", note: "", effects: { clarity: 5 } },
         { id: "c2", label: "直接评价对方态度", targetId: "n3", intent: "指责", note: "", effects: { stress: 6 } }
       ] },
-      { id: "n2", title: "事实浮现", speaker: hero, kind: "dialogue", text: "我先不下结论，你能告诉我今天具体发生了什么吗？", tags: ["fact"], notes: "", effects: { clarity: 6, stress: -3 }, choices: [
+      { id: "n2", title: "事实浮现", speaker: hero, speakerRoleType: "protagonist", kind: "dialogue", text: "我先不下结论，你能告诉我今天具体发生了什么吗？", tags: ["fact"], notes: "", effects: { clarity: 6, stress: -3 }, choices: [
         { id: "c3", label: "让精灵帮助拆分事实与想法", targetId: "n4", intent: "训练", note: "", effects: { clarity: 6 } }
       ] },
-      { id: "n3", title: "误判升级", speaker: "精灵", kind: "training", text: "你刚才补上的是态度推断，不是你亲眼确认过的事实。", tags: ["correction"], notes: "", effects: { clarity: 8, stress: -2 }, choices: [
+      { id: "n3", title: "误判升级", speaker: "精灵", speakerRoleType: "spirit", kind: "training", text: "你刚才补上的是态度推断，不是你亲眼确认过的事实。", tags: ["correction"], notes: "", effects: { clarity: 8, stress: -2 }, choices: [
         { id: "c4", label: "回到具体事件", targetId: "n2", intent: "纠偏", note: "", effects: { clarity: 5 } }
       ] },
-      { id: "n4", title: "重构表达", speaker: "精灵", kind: "reflection", text: "如果你只说观察、感受和需求，你会怎么讲？", tags: ["reflection"], notes: "", effects: { clarity: 7, trust: 3 }, choices: [
+      { id: "n4", title: "重构表达", speaker: "精灵", speakerRoleType: "spirit", kind: "reflection", text: "如果你只说观察、感受和需求，你会怎么讲？", tags: ["reflection"], notes: "", effects: { clarity: 7, trust: 3 }, choices: [
         { id: "c5", label: "说出观察与需求", targetId: "n5", intent: "重构表达", note: "", effects: { trust: 8, stress: -5 } },
         { id: "c6", label: "继续控诉对方", targetId: "n6", intent: "指责", note: "", effects: { stress: 7, trust: -6 } }
       ] },
-      { id: "n5", title: "温和收束", speaker: hero, kind: "ending", text: "我现在更想先解决眼前这件事，然后再谈彼此为什么会这么生气。", tags: ["ending", "good"], notes: "", effects: { clarity: 10, stress: -8, trust: 10 }, choices: [] },
-      { id: "n6", title: "关系冻结", speaker: "NPC", kind: "ending", text: "如果现在只剩下指责，这段对话就没法继续了。", tags: ["ending", "bad"], notes: "", effects: { stress: 10, trust: -8 }, choices: [] }
+      { id: "n5", title: "温和收束", speaker: hero, speakerRoleType: "protagonist", kind: "ending", text: "我现在更想先解决眼前这件事，然后再谈彼此为什么会这么生气。", tags: ["ending", "good"], notes: "", effects: { clarity: 10, stress: -8, trust: 10 }, choices: [] },
+      { id: "n6", title: "关系冻结", speaker: "NPC", speakerRoleType: "npc", kind: "ending", text: "如果现在只剩下指责，这段对话就没法继续了。", tags: ["ending", "bad"], notes: "", effects: { stress: 10, trust: -8 }, choices: [] }
     ]
   });
 }
 
 function fallbackLogicAudit(instruction) {
-  const issues = [];
+  const issues = validateNarrativeRuleIssues();
   currentChapter().nodes.forEach(node => {
     if ((node.speaker || "").includes("精灵") && !/(提示|纠偏|观察|事实|想法)/.test(node.text)) {
       issues.push({
@@ -1554,20 +1916,46 @@ function fallbackLogicAudit(instruction) {
     }
   });
   return {
-    summary: instruction ? `已按“${instruction}”做快速一致性检查。` : "已做快速一致性检查。",
+    summary: instruction ? `已按“${instruction}”做快速一致性检查，并核对五类角色说话规则。` : "已做快速一致性检查，并核对五类角色说话规则。",
     issues
   };
 }
 
+async function loadInvites() {
+  if (state.currentUser?.role !== "admin") {
+    state.invites = [];
+    return;
+  }
+  try {
+    const result = await apiFetch("/admin/invite-codes");
+    state.invites = result.invites || [];
+  } catch {
+    state.invites = [];
+  }
+}
+
+async function generateInviteCodeFromAdmin() {
+  try {
+    if (state.currentUser?.role !== "admin") return;
+    const result = await apiFetch("/admin/invite-codes", { method: "POST" });
+    state.invites.unshift(result.invite);
+    renderInvitePanel();
+    await navigator.clipboard.writeText(result.invite.code);
+    flashStatus(`邀请码 ${result.invite.code} 已生成并复制`);
+  } catch (error) {
+    flashStatus(`生成邀请码失败：${error.message}`, true);
+  }
+}
+
 function fallbackGenerateNode(node, instruction) {
   const updated = structuredClone(node);
-  const speaker = normalizeSpeakerLabel(node.speaker);
-  if (speaker === "旁白") {
+  const speaker = normalizeRoleType(node.speakerRoleType);
+  if (speaker === "narrator") {
     updated.text = "空气短暂地停住了，客厅里只有杯沿轻轻碰到桌面的声音。";
-  } else if (speaker === "精灵") {
+  } else if (speaker === "spirit") {
     updated.text = "先别急着替别人下结论。你能确认的，是刚刚发生的事，还是你脑子里自动冒出来的解释？";
   } else {
-    updated.text = `${currentProject().protagonist.name || "主角"}吸了一口气，先把话压慢了一点：“我想先弄清楚刚刚具体发生了什么。”`;
+    updated.text = `${getPrimaryCharacter(currentProject().characters, "protagonist")?.name || "主角"}吸了一口气，先把话压慢了一点：“我想先弄清楚刚刚具体发生了什么。”`;
   }
   updated.notes = `${updated.notes || ""}\nAI生成：${instruction || "按世界规则和人物设定生成当前节点。"} `.trim();
   updated.tags = Array.from(new Set([...(updated.tags || []), "ai-generated"]));
@@ -1586,10 +1974,10 @@ function fallbackRefineNode(node, instruction) {
 function fallbackRewriteFollowing(nodes, instruction) {
   return nodes.map(node => {
     const updated = structuredClone(node);
-    const speaker = normalizeSpeakerLabel(node.speaker);
-    if (speaker === "旁白") {
+    const speaker = normalizeRoleType(node.speakerRoleType);
+    if (speaker === "narrator") {
       updated.text = `${updated.text.replace(/。?$/, "")}。场面因此比之前更收一点。`;
-    } else if (speaker === "精灵") {
+    } else if (speaker === "spirit") {
       updated.text = `${updated.text.replace(/。?$/, "")}。记得只提醒，不要替玩家下结论。`;
     } else {
       updated.text = `${updated.text.replace(/。?$/, "")}。这次表达比之前更克制，也更贴近人物本来的性格。`;
@@ -1602,10 +1990,13 @@ function fallbackRewriteFollowing(nodes, instruction) {
 function addNode() {
   const chapter = currentChapter();
   const id = createNodeId();
+  const protagonist = getPrimaryCharacter(currentProject().characters, "protagonist");
   chapter.nodes.push({
     id,
+    characterId: protagonist?.id || "",
+    speakerRoleType: protagonist?.roleType || "protagonist",
     title: `新节点 ${chapter.nodes.length + 1}`,
-    speaker: currentProject().protagonist.name || "主角",
+    speaker: protagonist?.name || "主角",
     kind: "dialogue",
     text: "输入新节点文案",
     tags: ["draft"],
@@ -1703,6 +2094,7 @@ function buildGodotExportLocal() {
     generatedAt: new Date().toISOString(),
     projectId: currentProject().id,
     projectTitle: currentProject().title,
+    characters: currentProject().characters,
     files: currentProject().chapters.map(chapter => ({
       path: `data/dialogue/${slugify(currentProject().id)}/dlg_${slugify(currentProject().id)}_${slugify(chapter.slug)}_v1.json`,
       content: {
@@ -1711,10 +2103,13 @@ function buildGodotExportLocal() {
         chapter_id: chapter.id,
         chapter_title: chapter.title,
         chapter_slug: chapter.slug,
+        characters: currentProject().characters,
         metrics: currentProject().metrics,
         derived_formulas: currentProject().derivedFormulas,
         nodes: chapter.nodes.map(node => ({
           id: node.id,
+          character_id: node.characterId || "",
+          speaker_role_type: node.speakerRoleType || inferRoleTypeFromSpeaker(node.speaker),
           speaker: node.speaker,
           title: node.title,
           type: node.kind,
@@ -1737,11 +2132,14 @@ function exportMarkdown() {
     "## 训练目标",
     currentProject().projectGoal,
     "",
-    "## 主角",
-    `- 姓名：${currentProject().protagonist.name}`,
-    `- 定位：${currentProject().protagonist.role}`,
-    `- 特质：${currentProject().protagonist.traits}`,
-    `- 目标：${currentProject().protagonist.goal}`,
+    "## 角色卡",
+    ...currentProject().characters.flatMap(character => [
+      `- ${character.name} [${roleTypeLabel(character.roleType)}]`,
+      `  - 叙事定位：${character.narrativeRole || "未填写"}`,
+      `  - 特质：${character.traits || "未填写"}`,
+      `  - 目标：${character.goal || "未填写"}`,
+      `  - 上下文：${character.context || "未填写"}`
+    ]),
     ""
   ];
   currentProject().chapters.forEach(chapter => {
@@ -1751,6 +2149,7 @@ function exportMarkdown() {
     chapter.nodes.forEach(node => {
       lines.push(`### ${node.title} (${kindLabel(node.kind)})`);
       lines.push(`- 说话者：${node.speaker}`);
+      lines.push(`- 角色类型：${roleTypeLabel(node.speakerRoleType)}`);
       lines.push(`- 标签：${node.tags.join(", ") || "无"}`);
       lines.push(`- 效果：${JSON.stringify(node.effects || {})}`);
       lines.push(node.text);
@@ -1767,8 +2166,39 @@ function exportMarkdown() {
   return lines.join("\n");
 }
 
+function exportProjectArtifact() {
+  return {
+    id: currentProject().id,
+    title: currentProject().title,
+    projectGoal: currentProject().projectGoal,
+    characters: currentProject().characters,
+    metrics: currentProject().metrics,
+    derivedFormulas: currentProject().derivedFormulas,
+    chapters: currentProject().chapters.map(chapter => ({
+      id: chapter.id,
+      title: chapter.title,
+      slug: chapter.slug,
+      notes: chapter.notes,
+      nodes: chapter.nodes.map(node => ({
+        id: node.id,
+        characterId: node.characterId || "",
+        speakerRoleType: node.speakerRoleType || "",
+        speaker: node.speaker,
+        title: node.title,
+        kind: node.kind,
+        text: node.text,
+        tags: node.tags,
+        notes: node.notes,
+        effects: node.effects,
+        choices: node.choices,
+        position: node.position
+      }))
+    }))
+  };
+}
+
 function exportProjectData() {
-  return normalizeProject(currentProject());
+  return structuredClone(currentProject());
 }
 
 function evaluateDerived(metrics) {
@@ -1800,11 +2230,15 @@ function createNodeId() {
 }
 
 function normalizeGraphPayload(payload) {
-  return { nodes: (payload.nodes || []).map((node, index) => normalizeNode(node, index, currentProject().metrics)) };
+  return {
+    nodes: (payload.nodes || [])
+      .map((node, index) => normalizeNode(node, index, currentProject().metrics))
+      .map(node => enforceNarrativeRules(node))
+  };
 }
 
 function normalizeNodePayload(node) {
-  return normalizeNode(node, 0, currentProject().metrics);
+  return enforceNarrativeRules(normalizeNode(node, 0, currentProject().metrics));
 }
 
 function normalizeLogicAuditPayload(payload) {
@@ -1911,18 +2345,22 @@ function buildAiContextBlock() {
   return [
     `项目：${currentProject().title}`,
     `项目目标：${currentProject().projectGoal}`,
-    `世界规则：${currentProject().worldNotes}`,
-    `主角：${protagonistSummary()}`,
+    `世界规则：${currentProject().worldBook || currentProject().worldNotes}`,
+    `世界书：${currentProject().worldBook || "无"}`,
+    `人物卡补充：${currentProject().characterBook || "无"}`,
+    `角色卡：${currentProject().characters.map(character => `${character.name}[${roleTypeLabel(character.roleType)}] 定位:${character.narrativeRole || "未写"} 特质:${character.traits || "未写"} 目标:${character.goal || "未写"} 上下文:${character.context || "未写"}`).join("；")}`,
     `章节：${currentChapter()?.title ?? ""}`,
     `章节备注：${currentChapter()?.notes ?? ""}`,
+    `章节卡：${currentChapter()?.chapterBook ?? "无"}`,
     `指标：${currentProject().metrics.map(metric => `${metric.label}/${metric.id}(${metric.initial}/${metric.min}-${metric.max})`).join("，")}`,
-    "说话者规则：旁白负责环境与动作，精灵负责提示和纠偏，人物负责符合性格与场景的自然表达。"
+    `预设逻辑：${currentProject().systemPrompt || "无"}`,
+    rolePromptRules()
   ].join("\n");
 }
 
 function summarizeCurrentChapterForAi() {
   return (currentChapter()?.nodes || []).map(node =>
-    `[${node.id}] ${node.title} | ${normalizeSpeakerLabel(node.speaker)} | ${kindLabel(node.kind)} | ${truncate(node.text, 80)}`
+    `[${node.id}] ${node.title} | ${node.speaker} | ${roleTypeLabel(node.speakerRoleType)} | ${kindLabel(node.kind)} | ${truncate(node.text, 80)}`
   ).join("\n");
 }
 
@@ -1948,11 +2386,7 @@ function collectDownstreamNodes(startId) {
 }
 
 function normalizeSpeakerLabel(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return "人物";
-  if (/(旁白|narrat)/i.test(raw)) return "旁白";
-  if (/(精灵|spirit|fairy|guide)/i.test(raw)) return "精灵";
-  return raw;
+  return roleTypeLabel(inferRoleTypeFromSpeaker(value));
 }
 
 function applySpeakerPreset(speaker) {
@@ -2114,7 +2548,8 @@ function kindClass(kind) {
 }
 
 function protagonistSummary() {
-  return `${currentProject().protagonist.name}，${currentProject().protagonist.role}。特质：${currentProject().protagonist.traits}。目标：${currentProject().protagonist.goal}。`;
+  const protagonist = getPrimaryCharacter(currentProject().characters, "protagonist");
+  return protagonist ? `${protagonist.name}，${protagonist.narrativeRole}。特质：${protagonist.traits}。目标：${protagonist.goal}。` : "未设置主角。";
 }
 
 function splitTags(value) {
